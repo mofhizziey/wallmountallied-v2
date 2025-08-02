@@ -53,16 +53,20 @@ export default function DashboardPage() {
       return
     }
 
-    if (user.accountStatus === "suspended") {
+    // Condition to prevent viewing dashboard if account is suspended or locked
+    if (user.accountStatus === "suspended" || user.accountStatus === "locked") {
+      localStorage.removeItem("isAuthenticated")
+      localStorage.removeItem("currentUserId")
       toast({
-        title: "Account Suspended",
-        description: "Your account has been suspended. Please contact support.",
+        title: "Account Restricted",
+        description: `Your account has been ${user.accountStatus}. Please contact support.`,
         variant: "destructive",
       })
+      router.push("/login")
+      return
     }
 
     setUserData(user)
-
     // Load actual transactions from DataStore
     const userTransactions = dataStore.getTransactionsByUserId(currentUserId)
     setTransactions(
@@ -109,7 +113,9 @@ export default function DashboardPage() {
     <DashboardLayout>
       <div className="space-y-6">
         {/* Welcome Section */}
-        <div className="flex items-center justify-between">
+        <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+          {" "}
+          {/* Responsive layout */}
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Welcome back, {userData.firstName}!</h1>
             <p className="text-gray-600">Here's what's happening with your accounts today.</p>
@@ -125,7 +131,8 @@ export default function DashboardPage() {
           <Alert className="border-yellow-200 bg-yellow-50">
             <AlertTriangle className="h-4 w-4 text-yellow-600" />
             <AlertDescription className="text-yellow-800">
-              Your account is pending verification. Funds will be available once your identity is verified by our team.
+              Your account is currently restricted. Funds will be available once your identity is fully verified by our
+              team.
               {userData.verificationStatus === "documents_required" &&
                 " Please ensure all required documents are submitted."}
             </AlertDescription>
@@ -147,7 +154,6 @@ export default function DashboardPage() {
               <p className="text-xs text-muted-foreground">Account: ****{userData.accountNumber.slice(-4)}</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Savings Account</CardTitle>
@@ -161,7 +167,6 @@ export default function DashboardPage() {
               <p className="text-xs text-muted-foreground">+2.5% APY</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Account Status</CardTitle>
@@ -174,7 +179,6 @@ export default function DashboardPage() {
               </p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Balance</CardTitle>

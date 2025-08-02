@@ -34,7 +34,8 @@ import {
   DollarSign,
   ArrowUpDown,
   Calendar,
-  History,
+  Lock,
+  Unlock,
 } from "lucide-react"
 import { useToast } from "@/hooks/use-toast"
 import { DataStore, type User, type Transaction } from "@/lib/data-store"
@@ -92,14 +93,12 @@ export default function AdminDashboardPage() {
       router.push("/admin")
       return
     }
-
     loadData()
   }, [router])
 
   useEffect(() => {
     // Filter users based on search and status
     let filtered = users
-
     if (searchTerm) {
       filtered = filtered.filter(
         (user) =>
@@ -109,11 +108,9 @@ export default function AdminDashboardPage() {
           user.accountNumber.includes(searchTerm),
       )
     }
-
     if (statusFilter !== "all") {
       filtered = filtered.filter((user) => user.accountStatus === statusFilter)
     }
-
     setFilteredUsers(filtered)
   }, [users, searchTerm, statusFilter])
 
@@ -137,7 +134,6 @@ export default function AdminDashboardPage() {
         kycCompleted: true,
       }),
     })
-
     if (updatedUser) {
       await loadData()
       toast({
@@ -150,7 +146,6 @@ export default function AdminDashboardPage() {
   const updateVerificationStatus = async (userId: string, newStatus: User["verificationStatus"]) => {
     const dataStore = DataStore.getInstance()
     const updatedUser = await dataStore.updateUser(userId, { verificationStatus: newStatus })
-
     if (updatedUser) {
       await loadData()
       toast({
@@ -169,7 +164,6 @@ export default function AdminDashboardPage() {
       })
       return
     }
-
     const dataStore = DataStore.getInstance()
     const user = dataStore.getUserById(balanceUpdateData.userId)
     if (!user) return
@@ -203,7 +197,6 @@ export default function AdminDashboardPage() {
     }
 
     const updatedUser = await dataStore.updateUser(balanceUpdateData.userId, updateData)
-
     if (updatedUser) {
       // Create transaction record
       await dataStore.createTransaction({
@@ -214,7 +207,6 @@ export default function AdminDashboardPage() {
         category: "Admin Action",
         fromAccount: balanceUpdateData.accountType,
       })
-
       await loadData()
       setIsBalanceDialogOpen(false)
       setBalanceUpdateData({
@@ -224,7 +216,6 @@ export default function AdminDashboardPage() {
         amount: 0,
         reason: "",
       })
-
       toast({
         title: "Balance Updated",
         description: `${balanceUpdateData.accountType} balance ${balanceUpdateData.action}ed successfully`,
@@ -307,7 +298,6 @@ export default function AdminDashboardPage() {
       fromAccount: transferData.fromAccount,
       toAccount: `${toUser.firstName} ${toUser.lastName} (${transferData.toAccount})`,
     })
-
     await dataStore.createTransaction({
       userId: transferData.toUserId,
       type: "credit",
@@ -327,7 +317,6 @@ export default function AdminDashboardPage() {
       amount: 0,
       reason: "",
     })
-
     toast({
       title: "Transfer Completed",
       description: `Successfully transferred $${transferData.amount.toFixed(2)}`,
@@ -336,10 +325,8 @@ export default function AdminDashboardPage() {
 
   const handleEditUser = async () => {
     if (!selectedUser || !editUserData) return
-
     const dataStore = DataStore.getInstance()
     const updatedUser = await dataStore.updateUser(selectedUser.id, editUserData)
-
     if (updatedUser) {
       await loadData()
       setIsEditUserDialogOpen(false)
@@ -388,6 +375,8 @@ export default function AdminDashboardPage() {
         return "bg-red-100 text-red-800"
       case "closed":
         return "bg-gray-100 text-gray-800"
+      case "locked": // Added locked status color
+        return "bg-purple-100 text-purple-800"
       default:
         return "bg-gray-100 text-gray-800"
     }
@@ -413,6 +402,7 @@ export default function AdminDashboardPage() {
     verifiedUsers: users.filter((u) => u.accountStatus === "verified").length,
     pendingUsers: users.filter((u) => u.accountStatus === "pending").length,
     suspendedUsers: users.filter((u) => u.accountStatus === "suspended").length,
+    lockedUsers: users.filter((u) => u.accountStatus === "locked").length, // Added locked users stat
     totalDeposits: users.reduce((sum, u) => sum + u.checkingBalance + u.savingsBalance, 0),
     totalTransactions: transactions.length,
   }
@@ -438,19 +428,21 @@ export default function AdminDashboardPage() {
                     Update Balance
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="sm:max-w-[425px]">
+                  {" "}
+                  {/* Added sm:max-w */}
                   <DialogHeader>
                     <DialogTitle>Update User Balance</DialogTitle>
                     <DialogDescription>Modify a user's account balance with proper documentation</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="space-y-2">
-                      <Label>Select User</Label>
+                      <Label htmlFor="select-user-balance">Select User</Label>
                       <Select
                         value={balanceUpdateData.userId}
                         onValueChange={(value) => setBalanceUpdateData((prev) => ({ ...prev, userId: value }))}
                       >
-                        <SelectTrigger>
+                        <SelectTrigger id="select-user-balance">
                           <SelectValue placeholder="Choose user" />
                         </SelectTrigger>
                         <SelectContent>
@@ -462,16 +454,18 @@ export default function AdminDashboardPage() {
                         </SelectContent>
                       </Select>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {" "}
+                      {/* Responsive grid */}
                       <div className="space-y-2">
-                        <Label>Account Type</Label>
+                        <Label htmlFor="account-type">Account Type</Label>
                         <Select
                           value={balanceUpdateData.accountType}
                           onValueChange={(value: "checking" | "savings") =>
                             setBalanceUpdateData((prev) => ({ ...prev, accountType: value }))
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="account-type">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -481,14 +475,14 @@ export default function AdminDashboardPage() {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>Action</Label>
+                        <Label htmlFor="action-type">Action</Label>
                         <Select
                           value={balanceUpdateData.action}
                           onValueChange={(value: "add" | "subtract" | "set") =>
                             setBalanceUpdateData((prev) => ({ ...prev, action: value }))
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="action-type">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -500,8 +494,9 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Amount</Label>
+                      <Label htmlFor="amount">Amount</Label>
                       <Input
+                        id="amount"
                         type="number"
                         step="0.01"
                         min="0"
@@ -512,8 +507,9 @@ export default function AdminDashboardPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Reason</Label>
+                      <Label htmlFor="reason">Reason</Label>
                       <Textarea
+                        id="reason"
                         value={balanceUpdateData.reason}
                         onChange={(e) => setBalanceUpdateData((prev) => ({ ...prev, reason: e.target.value }))}
                         placeholder="Explain the reason for this balance update..."
@@ -525,7 +521,6 @@ export default function AdminDashboardPage() {
                   </div>
                 </DialogContent>
               </Dialog>
-
               <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
                 <DialogTrigger asChild>
                   <Button variant="outline">
@@ -533,20 +528,24 @@ export default function AdminDashboardPage() {
                     Transfer Funds
                   </Button>
                 </DialogTrigger>
-                <DialogContent>
+                <DialogContent className="sm:max-w-[425px]">
+                  {" "}
+                  {/* Added sm:max-w */}
                   <DialogHeader>
                     <DialogTitle>Transfer Funds Between Users</DialogTitle>
                     <DialogDescription>Move money between user accounts</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {" "}
+                      {/* Responsive grid */}
                       <div className="space-y-2">
-                        <Label>From User</Label>
+                        <Label htmlFor="from-user">From User</Label>
                         <Select
                           value={transferData.fromUserId}
                           onValueChange={(value) => setTransferData((prev) => ({ ...prev, fromUserId: value }))}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="from-user">
                             <SelectValue placeholder="Select user" />
                           </SelectTrigger>
                           <SelectContent>
@@ -559,12 +558,12 @@ export default function AdminDashboardPage() {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>To User</Label>
+                        <Label htmlFor="to-user">To User</Label>
                         <Select
                           value={transferData.toUserId}
                           onValueChange={(value) => setTransferData((prev) => ({ ...prev, toUserId: value }))}
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="to-user">
                             <SelectValue placeholder="Select user" />
                           </SelectTrigger>
                           <SelectContent>
@@ -579,16 +578,18 @@ export default function AdminDashboardPage() {
                         </Select>
                       </div>
                     </div>
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {" "}
+                      {/* Responsive grid */}
                       <div className="space-y-2">
-                        <Label>From Account</Label>
+                        <Label htmlFor="from-account">From Account</Label>
                         <Select
                           value={transferData.fromAccount}
                           onValueChange={(value: "checking" | "savings") =>
                             setTransferData((prev) => ({ ...prev, fromAccount: value }))
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="from-account">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -598,14 +599,14 @@ export default function AdminDashboardPage() {
                         </Select>
                       </div>
                       <div className="space-y-2">
-                        <Label>To Account</Label>
+                        <Label htmlFor="to-account">To Account</Label>
                         <Select
                           value={transferData.toAccount}
                           onValueChange={(value: "checking" | "savings") =>
                             setTransferData((prev) => ({ ...prev, toAccount: value }))
                           }
                         >
-                          <SelectTrigger>
+                          <SelectTrigger id="to-account">
                             <SelectValue />
                           </SelectTrigger>
                           <SelectContent>
@@ -616,8 +617,9 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
                     <div className="space-y-2">
-                      <Label>Amount</Label>
+                      <Label htmlFor="transfer-amount">Amount</Label>
                       <Input
+                        id="transfer-amount"
                         type="number"
                         step="0.01"
                         min="0"
@@ -628,8 +630,9 @@ export default function AdminDashboardPage() {
                       />
                     </div>
                     <div className="space-y-2">
-                      <Label>Reason</Label>
+                      <Label htmlFor="transfer-reason">Reason</Label>
                       <Textarea
+                        id="transfer-reason"
                         value={transferData.reason}
                         onChange={(e) => setTransferData((prev) => ({ ...prev, reason: e.target.value }))}
                         placeholder="Explain the reason for this transfer..."
@@ -641,7 +644,6 @@ export default function AdminDashboardPage() {
                   </div>
                 </DialogContent>
               </Dialog>
-
               <Button onClick={handleLogout} variant="outline">
                 <LogOut className="h-4 w-4 mr-2" />
                 Logout
@@ -650,10 +652,11 @@ export default function AdminDashboardPage() {
           </div>
         </div>
       </header>
-
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Overview */}
-        <div className="grid grid-cols-1 md:grid-cols-6 gap-6 mb-8">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
+          {" "}
+          {/* Responsive grid */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -663,7 +666,6 @@ export default function AdminDashboardPage() {
               <div className="text-2xl font-bold">{stats.totalUsers}</div>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Verified</CardTitle>
@@ -673,7 +675,6 @@ export default function AdminDashboardPage() {
               <div className="text-2xl font-bold text-green-600">{stats.verifiedUsers}</div>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Pending</CardTitle>
@@ -683,7 +684,6 @@ export default function AdminDashboardPage() {
               <div className="text-2xl font-bold text-yellow-600">{stats.pendingUsers}</div>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Suspended</CardTitle>
@@ -693,7 +693,15 @@ export default function AdminDashboardPage() {
               <div className="text-2xl font-bold text-red-600">{stats.suspendedUsers}</div>
             </CardContent>
           </Card>
-
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
+              <CardTitle className="text-sm font-medium">Locked</CardTitle> {/* New stat card */}
+              <Lock className="h-4 w-4 text-purple-600" />
+            </CardHeader>
+            <CardContent>
+              <div className="text-2xl font-bold text-purple-600">{stats.lockedUsers}</div>
+            </CardContent>
+          </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Deposits</CardTitle>
@@ -703,22 +711,13 @@ export default function AdminDashboardPage() {
               <div className="text-2xl font-bold">{formatCurrency(stats.totalDeposits)}</div>
             </CardContent>
           </Card>
-
-          <Card>
-            <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Transactions</CardTitle>
-              <History className="h-4 w-4 text-muted-foreground" />
-            </CardHeader>
-            <CardContent>
-              <div className="text-2xl font-bold">{stats.totalTransactions}</div>
-            </CardContent>
-          </Card>
         </div>
-
         {/* User Management */}
         <Card>
           <CardHeader>
-            <div className="flex justify-between items-center">
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
+              {" "}
+              {/* Responsive layout */}
               <div>
                 <CardTitle>User Management</CardTitle>
                 <CardDescription>View and manage all user accounts</CardDescription>
@@ -733,7 +732,9 @@ export default function AdminDashboardPage() {
           </CardHeader>
           <CardContent>
             {/* Filters */}
-            <div className="flex space-x-4 mb-6">
+            <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
+              {" "}
+              {/* Responsive filters */}
               <div className="flex-1">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -741,12 +742,14 @@ export default function AdminDashboardPage() {
                     placeholder="Search users..."
                     value={searchTerm}
                     onChange={(e) => setSearchTerm(e.target.value)}
-                    className="pl-10"
+                    className="pl-10 w-full"
                   />
                 </div>
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
-                <SelectTrigger className="w-48">
+                <SelectTrigger className="w-full sm:w-48">
+                  {" "}
+                  {/* Responsive width */}
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue />
                 </SelectTrigger>
@@ -756,59 +759,65 @@ export default function AdminDashboardPage() {
                   <SelectItem value="verified">Verified</SelectItem>
                   <SelectItem value="suspended">Suspended</SelectItem>
                   <SelectItem value="closed">Closed</SelectItem>
+                  <SelectItem value="locked">Locked</SelectItem> {/* Added locked filter option */}
                 </SelectContent>
               </Select>
             </div>
-
             {/* Users Table */}
             <div className="overflow-x-auto">
-              <table className="w-full">
-                <thead>
-                  <tr className="border-b">
-                    <th className="text-left py-3 px-4 font-medium">User</th>
-                    <th className="text-left py-3 px-4 font-medium">Account</th>
-                    <th className="text-left py-3 px-4 font-medium">Balances</th>
-                    <th className="text-left py-3 px-4 font-medium">Status</th>
-                    <th className="text-left py-3 px-4 font-medium">Verification</th>
-                    <th className="text-left py-3 px-4 font-medium">Created</th>
-                    <th className="text-left py-3 px-4 font-medium">Actions</th>
+              <table className="min-w-full divide-y divide-gray-200">
+                {" "}
+                {/* min-w-full for responsiveness */}
+                <thead className="bg-gray-50">
+                  <tr>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500 uppercase tracking-wider">User</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500 uppercase tracking-wider">Account</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500 uppercase tracking-wider">Balances</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500 uppercase tracking-wider">Status</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500 uppercase tracking-wider">
+                      Verification
+                    </th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500 uppercase tracking-wider">Created</th>
+                    <th className="text-left py-3 px-4 font-medium text-gray-500 uppercase tracking-wider">Actions</th>
                   </tr>
                 </thead>
-                <tbody>
+                <tbody className="bg-white divide-y divide-gray-200">
                   {filteredUsers.map((user) => (
-                    <tr key={user.id} className="border-b hover:bg-gray-50">
-                      <td className="py-3 px-4">
+                    <tr key={user.id} className="hover:bg-gray-50">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <div>
-                          <p className="font-medium">
+                          <p className="font-medium text-gray-900">
                             {user.firstName} {user.lastName}
                           </p>
                           <p className="text-sm text-gray-600">{user.email}</p>
                         </div>
                       </td>
-                      <td className="py-3 px-4">
-                        <p className="font-mono text-sm">****{user.accountNumber.slice(-4)}</p>
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <p className="font-mono text-sm text-gray-800">****{user.accountNumber.slice(-4)}</p>
                         <p className="text-xs text-gray-500 flex items-center">
                           <Calendar className="h-3 w-3 mr-1" />
                           {formatDate(user.createdAt)}
                         </p>
                       </td>
-                      <td className="py-3 px-4">
-                        <div className="text-sm">
+                      <td className="py-3 px-4 whitespace-nowrap">
+                        <div className="text-sm text-gray-800">
                           <p>Checking: {formatCurrency(user.checkingBalance)}</p>
                           <p className="text-green-600">Available: {formatCurrency(user.availableCheckingBalance)}</p>
                           <p className="text-gray-600">Savings: {formatCurrency(user.savingsBalance)}</p>
                         </div>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <Badge className={getStatusColor(user.accountStatus)}>{user.accountStatus}</Badge>
                       </td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <Badge className={getVerificationColor(user.verificationStatus)}>
                           {user.verificationStatus.replace("_", " ")}
                         </Badge>
                       </td>
-                      <td className="py-3 px-4 text-sm text-gray-600">{formatDate(user.createdAt)}</td>
-                      <td className="py-3 px-4">
+                      <td className="py-3 px-4 text-sm text-gray-600 whitespace-nowrap">
+                        {formatDate(user.createdAt)}
+                      </td>
+                      <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex space-x-2">
                           <Button size="sm" variant="outline" onClick={() => setSelectedUser(user)}>
                             <Eye className="h-3 w-3" />
@@ -842,13 +851,33 @@ export default function AdminDashboardPage() {
                               Verify
                             </Button>
                           )}
-                          {user.accountStatus === "verified" && (
+                          {(user.accountStatus === "verified" || user.accountStatus === "pending") && (
                             <Button
                               size="sm"
                               variant="destructive"
                               onClick={() => updateUserStatus(user.id, "suspended")}
                             >
                               Suspend
+                            </Button>
+                          )}
+                          {(user.accountStatus === "verified" || user.accountStatus === "pending") && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="bg-purple-600 hover:bg-purple-700 text-white"
+                              onClick={() => updateUserStatus(user.id, "locked")}
+                            >
+                              <Lock className="h-3 w-3" />
+                            </Button>
+                          )}
+                          {user.accountStatus === "locked" && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="bg-blue-600 hover:bg-blue-700 text-white"
+                              onClick={() => updateUserStatus(user.id, "verified")}
+                            >
+                              <Unlock className="h-3 w-3" />
                             </Button>
                           )}
                         </div>
@@ -860,7 +889,6 @@ export default function AdminDashboardPage() {
             </div>
           </CardContent>
         </Card>
-
         {/* User Detail Modal */}
         {selectedUser && !isEditUserDialogOpen && (
           <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
@@ -875,15 +903,18 @@ export default function AdminDashboardPage() {
               </CardHeader>
               <CardContent className="space-y-6">
                 <Tabs defaultValue="personal">
-                  <TabsList className="grid w-full grid-cols-4">
+                  <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
+                    {" "}
+                    {/* Responsive grid */}
                     <TabsTrigger value="personal">Personal</TabsTrigger>
                     <TabsTrigger value="account">Account</TabsTrigger>
                     <TabsTrigger value="verification">Verification</TabsTrigger>
                     <TabsTrigger value="transactions">Transactions</TabsTrigger>
                   </TabsList>
-
                   <TabsContent value="personal" className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {" "}
+                      {/* Responsive grid */}
                       <div>
                         <Label>First Name</Label>
                         <p className="font-medium">{selectedUser.firstName}</p>
@@ -916,9 +947,10 @@ export default function AdminDashboardPage() {
                       </p>
                     </div>
                   </TabsContent>
-
                   <TabsContent value="account" className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {" "}
+                      {/* Responsive grid */}
                       <div>
                         <Label>Account Number</Label>
                         <p className="font-mono font-medium">{selectedUser.accountNumber}</p>
@@ -941,6 +973,7 @@ export default function AdminDashboardPage() {
                               <SelectItem value="verified">Verified</SelectItem>
                               <SelectItem value="suspended">Suspended</SelectItem>
                               <SelectItem value="closed">Closed</SelectItem>
+                              <SelectItem value="locked">Locked</SelectItem> {/* Added locked status option */}
                             </SelectContent>
                           </Select>
                         </div>
@@ -967,9 +1000,10 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
                   </TabsContent>
-
                   <TabsContent value="verification" className="space-y-4">
-                    <div className="grid grid-cols-2 gap-4">
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      {" "}
+                      {/* Responsive grid */}
                       <div>
                         <Label>Verification Status</Label>
                         <div className="flex items-center space-x-2">
@@ -1027,7 +1061,6 @@ export default function AdminDashboardPage() {
                       </div>
                     )}
                   </TabsContent>
-
                   <TabsContent value="transactions" className="space-y-4">
                     <div className="max-h-96 overflow-y-auto">
                       {transactions
@@ -1070,70 +1103,83 @@ export default function AdminDashboardPage() {
             </Card>
           </div>
         )}
-
         {/* Edit User Dialog */}
         <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
-          <DialogContent>
+          <DialogContent className="sm:max-w-[425px]">
+            {" "}
+            {/* Added sm:max-w */}
             <DialogHeader>
               <DialogTitle>Edit User Information</DialogTitle>
               <DialogDescription>Update user's personal information</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
-              <div className="grid grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {" "}
+                {/* Responsive grid */}
                 <div className="space-y-2">
-                  <Label>First Name</Label>
+                  <Label htmlFor="edit-first-name">First Name</Label>
                   <Input
+                    id="edit-first-name"
                     value={editUserData.firstName || ""}
                     onChange={(e) => setEditUserData((prev) => ({ ...prev, firstName: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>Last Name</Label>
+                  <Label htmlFor="edit-last-name">Last Name</Label>
                   <Input
+                    id="edit-last-name"
                     value={editUserData.lastName || ""}
                     onChange={(e) => setEditUserData((prev) => ({ ...prev, lastName: e.target.value }))}
                   />
                 </div>
               </div>
               <div className="space-y-2">
-                <Label>Email</Label>
+                <Label htmlFor="edit-email">Email</Label>
                 <Input
+                  id="edit-email"
                   value={editUserData.email || ""}
                   onChange={(e) => setEditUserData((prev) => ({ ...prev, email: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Phone</Label>
+                <Label htmlFor="edit-phone">Phone</Label>
                 <Input
+                  id="edit-phone"
                   value={editUserData.phone || ""}
                   onChange={(e) => setEditUserData((prev) => ({ ...prev, phone: e.target.value }))}
                 />
               </div>
               <div className="space-y-2">
-                <Label>Address</Label>
+                <Label htmlFor="edit-address">Address</Label>
                 <Input
+                  id="edit-address"
                   value={editUserData.address || ""}
                   onChange={(e) => setEditUserData((prev) => ({ ...prev, address: e.target.value }))}
                 />
               </div>
-              <div className="grid grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                {" "}
+                {/* Responsive grid */}
                 <div className="space-y-2">
-                  <Label>City</Label>
+                  <Label htmlFor="edit-city">City</Label>
                   <Input
+                    id="edit-city"
                     value={editUserData.city || ""}
                     onChange={(e) => setEditUserData((prev) => ({ ...prev, city: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>State</Label>
+                  <Label htmlFor="edit-state">State</Label>
                   <Input
+                    id="edit-state"
                     value={editUserData.state || ""}
                     onChange={(e) => setEditUserData((prev) => ({ ...prev, state: e.target.value }))}
                   />
                 </div>
                 <div className="space-y-2">
-                  <Label>ZIP Code</Label>
+                  <Label htmlFor="edit-zip-code">ZIP Code</Label>
                   <Input
+                    id="edit-zip-code"
                     value={editUserData.zipCode || ""}
                     onChange={(e) => setEditUserData((prev) => ({ ...prev, zipCode: e.target.value }))}
                   />

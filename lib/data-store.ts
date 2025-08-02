@@ -1,5 +1,3 @@
-"use client"
-
 // Clean JSON data structure for the banking application
 export interface User {
   id: string
@@ -20,7 +18,7 @@ export interface User {
   savingsBalance: number
   availableCheckingBalance: number // Always 0 until verified
   availableSavingsBalance: number // Always 0 until verified
-  accountStatus: "pending" | "verified" | "suspended" | "closed"
+  accountStatus: "pending" | "verified" | "suspended" | "closed" | "locked" // Added 'locked'
   verificationStatus: "pending" | "selfie_required" | "documents_required" | "verified" | "rejected"
   selfieUrl?: string
   licenseUrl?: string
@@ -133,23 +131,18 @@ export class DataStore {
       this.isInitialized = true
       return
     }
-
     try {
       this.loadData()
       this.isInitialized = true
-
       // Set up periodic backup and JSON export
       this.setupPeriodicOperations()
-
       // Listen for storage events from other tabs
       window.addEventListener("storage", this.handleStorageChange.bind(this))
-
       // Save data before page unload
       window.addEventListener("beforeunload", () => {
         this.saveDataSync()
         this.exportToJSON()
       })
-
       console.log("DataStore initialized successfully")
     } catch (error) {
       console.error("Failed to initialize DataStore:", error)
@@ -159,18 +152,14 @@ export class DataStore {
 
   private loadData(): void {
     if (typeof window === "undefined") return
-
     try {
       // Try to load from localStorage first
       const stored = localStorage.getItem(STORAGE_KEYS.BANK_DATA)
-
       if (stored) {
         const parsedData = JSON.parse(stored) as BankData
-
         // Validate data structure
         if (this.validateDataStructure(parsedData)) {
           this.data = parsedData
-
           // Check if migration is needed
           if (parsedData.version !== CURRENT_VERSION) {
             this.migrateData(parsedData)
@@ -202,7 +191,6 @@ export class DataStore {
           return
         }
       }
-
       // If no backup exists, use defaults
       this.data = { ...defaultBankData }
       this.saveData()
@@ -229,7 +217,6 @@ export class DataStore {
 
   private migrateData(oldData: BankData): void {
     console.log(`Migrating data from version ${oldData.version} to ${CURRENT_VERSION}`)
-
     // Add migration logic here as needed
     this.data = {
       ...oldData,
@@ -237,7 +224,6 @@ export class DataStore {
       lastUpdated: new Date().toISOString(),
       metadata: oldData.metadata || defaultBankData.metadata,
     }
-
     this.saveData()
   }
 
@@ -249,21 +235,16 @@ export class DataStore {
 
   private async performSave(): Promise<void> {
     if (typeof window === "undefined" || !this.isInitialized) return
-
     try {
       this.data.lastUpdated = new Date().toISOString()
       const dataToSave = JSON.stringify(this.data)
-
       // Save to localStorage
       localStorage.setItem(STORAGE_KEYS.BANK_DATA, dataToSave)
-
       // Create backup
       localStorage.setItem(STORAGE_KEYS.BACKUP_DATA, dataToSave)
-
       // Save version and metadata
       localStorage.setItem(STORAGE_KEYS.VERSION, CURRENT_VERSION)
       localStorage.setItem(STORAGE_KEYS.METADATA, JSON.stringify(this.data.metadata))
-
       // Export to JSON (simulated - in real app would save to server/file)
       await this.exportToJSON()
     } catch (error) {
@@ -274,11 +255,9 @@ export class DataStore {
 
   private saveDataSync(): void {
     if (typeof window === "undefined" || !this.isInitialized) return
-
     try {
       this.data.lastUpdated = new Date().toISOString()
       const dataToSave = JSON.stringify(this.data)
-
       localStorage.setItem(STORAGE_KEYS.BANK_DATA, dataToSave)
       localStorage.setItem(STORAGE_KEYS.BACKUP_DATA, dataToSave)
     } catch (error) {
@@ -293,10 +272,8 @@ export class DataStore {
       const jsonData = JSON.stringify(this.data, null, 2)
       const blob = new Blob([jsonData], { type: "application/json" })
       const url = URL.createObjectURL(blob)
-
       // Store the blob URL for potential download
       sessionStorage.setItem("data_export_url", url)
-
       this.data.metadata.lastBackup = new Date().toISOString()
       console.log("Data exported to JSON successfully")
     } catch (error) {
@@ -306,7 +283,6 @@ export class DataStore {
 
   private handleStorageError(): void {
     console.warn("Storage error detected, attempting recovery...")
-
     try {
       // Try to load backup
       const backup = localStorage.getItem(STORAGE_KEYS.BACKUP_DATA)
@@ -321,7 +297,6 @@ export class DataStore {
     } catch (error) {
       console.error("Backup recovery failed:", error)
     }
-
     // If all else fails, use defaults
     this.data = { ...defaultBankData }
     console.log("Using default data due to storage errors")
@@ -360,27 +335,25 @@ export class DataStore {
   async authenticateUser(email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
     try {
       const user = this.data.users.find((u) => u.email.toLowerCase() === email.toLowerCase())
-
       if (!user) {
         return { success: false, error: "No account found with this email address" }
       }
-
       if (user.password !== password) {
         return { success: false, error: "Incorrect password. Please try again." }
       }
-
       if (user.accountStatus === "suspended") {
         return { success: false, error: "Your account has been suspended. Please contact support." }
       }
-
       if (user.accountStatus === "closed") {
         return { success: false, error: "Your account has been closed. Please contact support." }
       }
-
+      if (user.accountStatus === "locked") {
+        // Added locked status check
+        return { success: false, error: "Your account has been locked. Please contact support." }
+      }
       // Update login metadata
       this.data.metadata.totalLogins++
       await this.saveData()
-
       return { success: true, user }
     } catch (error) {
       console.error("Authentication error:", error)
@@ -391,19 +364,15 @@ export class DataStore {
   async validatePin(userId: string, pin: string): Promise<{ success: boolean; error?: string }> {
     try {
       const user = this.data.users.find((u) => u.id === userId)
-
       if (!user) {
         return { success: false, error: "User not found" }
       }
-
       if (user.pin !== pin) {
         return { success: false, error: "Incorrect PIN. Please try again." }
       }
-
       // Update last login
       user.lastLogin = new Date().toISOString()
       await this.saveData()
-
       return { success: true }
     } catch (error) {
       console.error("PIN validation error:", error)
@@ -430,28 +399,23 @@ export class DataStore {
       if (existingUser) {
         return { success: false, error: "An account with this email address already exists" }
       }
-
       // Validate required fields
       if (!userData.email || !userData.password || !userData.firstName || !userData.lastName) {
         return { success: false, error: "Please fill in all required fields" }
       }
-
       // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (!emailRegex.test(userData.email)) {
         return { success: false, error: "Please enter a valid email address" }
       }
-
       // Validate password strength
       if (userData.password.length < 6) {
         return { success: false, error: "Password must be at least 6 characters long" }
       }
-
       // Validate PIN
       if (!/^\d{4}$/.test(userData.pin)) {
         return { success: false, error: "PIN must be exactly 4 digits" }
       }
-
       const user: User = {
         ...userData,
         id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
@@ -462,11 +426,9 @@ export class DataStore {
         availableSavingsBalance: 0,
         createdAt: new Date().toISOString(),
       }
-
       this.data.users.push(user)
       this.data.metadata.totalSignups++
       await this.saveData()
-
       console.log(`User created: ${user.email}`)
       return { success: true, user }
     } catch (error) {
@@ -500,7 +462,6 @@ export class DataStore {
       if (userIndex !== -1) {
         this.data.users[userIndex] = { ...this.data.users[userIndex], ...updates }
         await this.saveData()
-
         console.log(`User updated: ${id}`)
         return this.data.users[userIndex]
       }
@@ -527,7 +488,6 @@ export class DataStore {
         this.data.users.splice(userIndex, 1)
         this.data.transactions = this.data.transactions.filter((txn) => txn.userId !== id)
         await this.saveData()
-
         console.log(`User deleted: ${id}`)
         return true
       }
@@ -555,10 +515,8 @@ export class DataStore {
         status: "completed",
         date: new Date().toISOString(),
       }
-
       this.data.transactions.push(transaction)
       await this.saveData()
-
       console.log(`Transaction created: ${transaction.id}`)
       return transaction
     } catch (error) {
@@ -616,7 +574,6 @@ export class DataStore {
   async importData(jsonData: string): Promise<boolean> {
     try {
       const importedData = JSON.parse(jsonData) as BankData
-
       if (this.validateDataStructure(importedData)) {
         this.data = importedData
         await this.saveData()
@@ -640,10 +597,8 @@ export class DataStore {
         localStorage.removeItem(STORAGE_KEYS.VERSION)
         localStorage.removeItem(STORAGE_KEYS.METADATA)
       }
-
       this.data = { ...defaultBankData }
       await this.saveData()
-
       console.log("All data cleared")
     } catch (error) {
       console.error("Error clearing data:", error)
