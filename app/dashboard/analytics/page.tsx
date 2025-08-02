@@ -7,23 +7,46 @@ import { Badge } from "@/components/ui/badge"
 import { Progress } from "@/components/ui/progress"
 import { TrendingUp, TrendingDown, DollarSign, ShoppingCart, Car, Home, Utensils, Gamepad2 } from "lucide-react"
 import { DashboardLayout } from "@/components/dashboard-layout"
+import { useToast } from "@/hooks/use-toast" // Import useToast
+import { DataStore, type User } from "@/lib/data-store" // Import DataStore and User type
 
 export default function AnalyticsPage() {
   const router = useRouter()
-  const [userData, setUserData] = useState<any>(null)
+  const { toast } = useToast() // Initialize toast
+  const [userData, setUserData] = useState<User | null>(null) // Use User type
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated")
-    if (!isAuthenticated) {
+    const currentUserId = localStorage.getItem("currentUserId") // Get current user ID
+
+    if (!isAuthenticated || !currentUserId) {
       router.push("/login")
       return
     }
 
-    const storedUser = localStorage.getItem("bankUser")
-    if (storedUser) {
-      setUserData(JSON.parse(storedUser))
+    const dataStore = DataStore.getInstance()
+    const user = dataStore.getUserById(currentUserId) // Fetch user data from DataStore
+
+    if (!user) {
+      router.push("/login")
+      return
     }
-  }, [router])
+
+    // Condition to prevent viewing dashboard if account is suspended or locked
+    if (user.accountStatus === "suspended" || user.accountStatus === "locked") {
+      localStorage.removeItem("isAuthenticated")
+      localStorage.removeItem("currentUserId")
+      toast({
+        title: "Account Restricted",
+        description: `Your account has been ${user.accountStatus}. Please contact support.`,
+        variant: "destructive",
+      })
+      router.push("/login")
+      return
+    }
+
+    setUserData(user)
+  }, [router, toast]) // Add toast to dependency array
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {
@@ -32,6 +55,7 @@ export default function AnalyticsPage() {
     }).format(amount)
   }
 
+  // Sample data - in a real app, these would be fetched from user's transactions
   const spendingCategories = [
     { name: "Housing", amount: 1200, budget: 1500, icon: Home, color: "bg-blue-500" },
     { name: "Food & Dining", amount: 450, budget: 600, icon: Utensils, color: "bg-green-500" },
@@ -39,7 +63,6 @@ export default function AnalyticsPage() {
     { name: "Shopping", amount: 280, budget: 300, icon: ShoppingCart, color: "bg-purple-500" },
     { name: "Entertainment", amount: 150, budget: 200, icon: Gamepad2, color: "bg-pink-500" },
   ]
-
   const monthlyTrends = [
     { month: "Jan", income: 3500, expenses: 2800 },
     { month: "Feb", income: 3500, expenses: 2950 },
@@ -50,7 +73,14 @@ export default function AnalyticsPage() {
   ]
 
   if (!userData) {
-    return <div>Loading...</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading your account...</p>
+        </div>
+      </div>
+    )
   }
 
   const totalSpent = spendingCategories.reduce((sum, cat) => sum + cat.amount, 0)
@@ -64,9 +94,8 @@ export default function AnalyticsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Financial Analytics</h1>
           <p className="text-gray-600">Insights into your spending patterns and financial health</p>
         </div>
-
         {/* Summary Cards */}
-        <div className="grid grid-cols-1 md:grid-cols-4 gap-6">
+        <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-4 gap-6">
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Monthly Income</CardTitle>
@@ -77,7 +106,6 @@ export default function AnalyticsPage() {
               <p className="text-xs text-muted-foreground">+2.5% from last month</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Monthly Expenses</CardTitle>
@@ -88,7 +116,6 @@ export default function AnalyticsPage() {
               <p className="text-xs text-muted-foreground">-5.2% from last month</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Savings Rate</CardTitle>
@@ -99,7 +126,6 @@ export default function AnalyticsPage() {
               <p className="text-xs text-muted-foreground">Above recommended 20%</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Budget Usage</CardTitle>
@@ -111,7 +137,6 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Spending by Category */}
           <Card>
@@ -124,7 +149,6 @@ export default function AnalyticsPage() {
                 const IconComponent = category.icon
                 const percentage = (category.amount / category.budget) * 100
                 const isOverBudget = percentage > 100
-
                 return (
                   <div key={category.name} className="space-y-2">
                     <div className="flex items-center justify-between">
@@ -147,7 +171,6 @@ export default function AnalyticsPage() {
               })}
             </CardContent>
           </Card>
-
           {/* Monthly Trends */}
           <Card>
             <CardHeader>
@@ -181,7 +204,6 @@ export default function AnalyticsPage() {
             </CardContent>
           </Card>
         </div>
-
         {/* Financial Health Score */}
         <Card>
           <CardHeader>
@@ -195,7 +217,6 @@ export default function AnalyticsPage() {
                 <p className="text-sm text-gray-600">Overall Score</p>
                 <Badge className="mt-2 bg-green-100 text-green-800">Excellent</Badge>
               </div>
-
               <div className="space-y-3">
                 <div>
                   <div className="flex justify-between text-sm mb-1">
@@ -219,7 +240,6 @@ export default function AnalyticsPage() {
                   <Progress value={95} className="h-2" />
                 </div>
               </div>
-
               <div className="space-y-2">
                 <h4 className="font-semibold text-sm">Recommendations</h4>
                 <ul className="text-xs text-gray-600 space-y-1">
