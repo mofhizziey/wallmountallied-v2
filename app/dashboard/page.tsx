@@ -141,7 +141,7 @@ export default function AdminDashboardPage() {
     if (updatedUser) {
       await loadData()
       toast({
-        title: "User Status Updated",
+        title: "User Account Status Updated",
         description: `User account status changed to ${newStatus}`,
       })
     }
