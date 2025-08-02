@@ -339,13 +339,18 @@ export default function AdminDashboardPage() {
   }
 
   const handleLogout = () => {
+    // Clear authentication tokens first
     localStorage.removeItem("isAdminAuthenticated")
     localStorage.removeItem("currentAdminId")
+
+    // Show toast notification
     toast({
       title: "Logged out",
       description: "Admin session ended",
     })
-    router.push("/admin")
+
+    // Redirect to admin login page and replace history entry
+    window.location.replace("/admin")
   }
 
   const formatCurrency = (amount: number) => {

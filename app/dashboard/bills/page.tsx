@@ -1,7 +1,6 @@
 "use client"
 
 import type React from "react"
-
 import { useState, useEffect } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
@@ -13,6 +12,7 @@ import { Badge } from "@/components/ui/badge"
 import { Calendar, CreditCard, Zap, Wifi, Car, Home } from "lucide-react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { useToast } from "@/hooks/use-toast"
+import { DataStore, type User } from "@/lib/data-store" // Import User and DataStore
 
 interface Bill {
   id: string
@@ -27,7 +27,7 @@ interface Bill {
 export default function BillsPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const [userData, setUserData] = useState<any>(null)
+  const [userData, setUserData] = useState<User | null>(null) // Use User type
   const [bills, setBills] = useState<Bill[]>([])
   const [paymentData, setPaymentData] = useState({
     billId: "",
@@ -38,17 +38,37 @@ export default function BillsPage() {
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated")
-    if (!isAuthenticated) {
+    const currentUserId = localStorage.getItem("currentUserId") // Get current user ID
+
+    if (!isAuthenticated || !currentUserId) {
       router.push("/login")
       return
     }
 
-    const storedUser = localStorage.getItem("bankUser")
-    if (storedUser) {
-      setUserData(JSON.parse(storedUser))
+    const dataStore = DataStore.getInstance()
+    const user = dataStore.getUserById(currentUserId) // Fetch user data from DataStore
+
+    if (!user) {
+      router.push("/login")
+      return
     }
 
-    // Sample bills data
+    // Condition to prevent actions if account is suspended or locked
+    if (user.accountStatus === "suspended" || user.accountStatus === "locked") {
+      localStorage.removeItem("isAuthenticated")
+      localStorage.removeItem("currentUserId")
+      toast({
+        title: "Account Restricted",
+        description: `Your account has been ${user.accountStatus}. Please contact support.`,
+        variant: "destructive",
+      })
+      router.push("/login")
+      return
+    }
+
+    setUserData(user)
+
+    // Sample bills data (static for now, could be fetched from DataStore if bills were stored there)
     const sampleBills: Bill[] = [
       {
         id: "1",
@@ -97,10 +117,19 @@ export default function BillsPage() {
       },
     ]
     setBills(sampleBills)
-  }, [router])
+  }, [router, toast])
 
-  const handlePayBill = (e: React.FormEvent) => {
+  const handlePayBill = async (e: React.FormEvent) => {
     e.preventDefault()
+
+    if (!userData) {
+      toast({
+        title: "Error",
+        description: "User data not loaded. Please try again.",
+        variant: "destructive",
+      })
+      return
+    }
 
     if (!paymentData.billId || !paymentData.amount || !paymentData.fromAccount) {
       toast({
@@ -111,22 +140,90 @@ export default function BillsPage() {
       return
     }
 
-    const bill = bills.find((b) => b.id === paymentData.billId)
-    if (bill) {
-      // Update bill status
-      setBills((prev) => prev.map((b) => (b.id === paymentData.billId ? { ...b, status: "paid" as const } : b)))
-
+    const amount = Number.parseFloat(paymentData.amount)
+    if (amount <= 0) {
       toast({
-        title: "Payment Successful!",
-        description: `Payment of $${Number.parseFloat(paymentData.amount).toFixed(2)} to ${bill.company} has been processed`,
+        title: "Error",
+        description: "Payment amount must be greater than $0",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const bill = bills.find((b) => b.id === paymentData.billId)
+    if (!bill) {
+      toast({
+        title: "Error",
+        description: "Selected bill not found.",
+        variant: "destructive",
+      })
+      return
+    }
+
+    const dataStore = DataStore.getInstance()
+    let currentBalance: number
+    let availableBalance: number
+
+    if (paymentData.fromAccount === "checking") {
+      currentBalance = userData.checkingBalance
+      availableBalance = userData.availableCheckingBalance
+    } else {
+      currentBalance = userData.savingsBalance
+      availableBalance = userData.availableSavingsBalance
+    }
+
+    // Check if user has sufficient available funds
+    if (availableBalance < amount) {
+      toast({
+        title: "Insufficient Funds",
+        description: `You only have ${formatCurrency(availableBalance)} available in your ${paymentData.fromAccount} account.`,
+        variant: "destructive",
+      })
+      return
+    }
+
+    // Prepare user balance update
+    const updatedUser: Partial<User> = { ...userData }
+    if (paymentData.fromAccount === "checking") {
+      updatedUser.checkingBalance = currentBalance - amount
+      updatedUser.availableCheckingBalance = availableBalance - amount
+    } else {
+      updatedUser.savingsBalance = currentBalance - amount
+      updatedUser.availableSavingsBalance = availableBalance - amount
+    }
+
+    const result = await dataStore.updateUser(userData.id, updatedUser)
+
+    if (result) {
+      setUserData(result) // Update local user data
+      // Create transaction record
+      await dataStore.createTransaction({
+        userId: userData.id,
+        type: "debit",
+        amount: amount,
+        description: `Bill payment to ${bill.company}`,
+        category: bill.category,
+        fromAccount: paymentData.fromAccount as "checking" | "savings",
       })
 
+      // Update bill status locally (since bills are sample data)
+      setBills((prev) => prev.map((b) => (b.id === paymentData.billId ? { ...b, status: "paid" as const } : b)))
+      toast({
+        title: "Payment Successful!",
+        description: `Payment of ${formatCurrency(amount)} to ${bill.company} has been processed.`,
+      })
       // Reset form
       setPaymentData({
         billId: "",
         amount: "",
         paymentDate: "",
         fromAccount: "",
+      })
+    } else {
+      toast({
+        title: "Payment Failed",
+        description: "An error occurred during payment. Please try again.",
+        variant: "destructive",
       })
     }
   }
@@ -160,8 +257,17 @@ export default function BillsPage() {
   }
 
   if (!userData) {
-    return <div>Loading...</div>
+    return (
+      <div className="min-h-screen flex items-center justify-center">
+        <div className="text-center">
+          <div className="animate-spin rounded-full h-32 w-32 border-b-2 border-blue-600 mx-auto"></div>
+          <p className="mt-4 text-gray-600">Loading your account...</p>
+        </div>
+      </div>
+    )
   }
+
+  const isAccountRestricted = userData.accountStatus !== "verified" || userData.availableCheckingBalance === 0
 
   const pendingBills = bills.filter((bill) => bill.status === "pending")
   const totalDue = pendingBills.reduce((sum, bill) => sum + bill.amount, 0)
@@ -173,7 +279,6 @@ export default function BillsPage() {
           <h1 className="text-3xl font-bold text-gray-900">Bill Pay</h1>
           <p className="text-gray-600">Manage and pay your bills in one convenient location</p>
         </div>
-
         {/* Summary Cards */}
         <div className="grid grid-cols-1 md:grid-cols-3 gap-6">
           <Card>
@@ -186,7 +291,6 @@ export default function BillsPage() {
               <p className="text-xs text-muted-foreground">{pendingBills.length} pending bills</p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Next Due</CardTitle>
@@ -201,7 +305,6 @@ export default function BillsPage() {
               </p>
             </CardContent>
           </Card>
-
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">This Month</CardTitle>
@@ -213,7 +316,6 @@ export default function BillsPage() {
             </CardContent>
           </Card>
         </div>
-
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-6">
           {/* Bills List */}
           <Card>
@@ -246,7 +348,6 @@ export default function BillsPage() {
               </div>
             </CardContent>
           </Card>
-
           {/* Payment Form */}
           <Card>
             <CardHeader>
@@ -267,6 +368,7 @@ export default function BillsPage() {
                         amount: selectedBill ? selectedBill.amount.toString() : "",
                       }))
                     }}
+                    disabled={isAccountRestricted}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Choose a bill to pay" />
@@ -280,7 +382,6 @@ export default function BillsPage() {
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="amount">Amount</Label>
                   <div className="relative">
@@ -294,32 +395,31 @@ export default function BillsPage() {
                       className="pl-8"
                       value={paymentData.amount}
                       onChange={(e) => setPaymentData((prev) => ({ ...prev, amount: e.target.value }))}
+                      disabled={isAccountRestricted}
                     />
                   </div>
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="fromAccount">Pay From</Label>
                   <Select
                     value={paymentData.fromAccount}
                     onValueChange={(value) => setPaymentData((prev) => ({ ...prev, fromAccount: value }))}
+                    disabled={isAccountRestricted}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="checking">
-                        Checking - ****{userData.accountNumber.slice(-4)}
-                        (${userData.accountBalance.toFixed(2)})
+                        Checking - ****{userData.accountNumber.slice(-4)} ({formatCurrency(userData.checkingBalance)})
                       </SelectItem>
                       <SelectItem value="savings">
-                        Savings - ****{(Number.parseInt(userData.accountNumber) + 1).toString().slice(-4)}
-                        (${userData.savingsBalance.toFixed(2)})
+                        Savings - ****{(Number.parseInt(userData.accountNumber) + 1).toString().slice(-4)} (
+                        {formatCurrency(userData.savingsBalance)})
                       </SelectItem>
                     </SelectContent>
                   </Select>
                 </div>
-
                 <div className="space-y-2">
                   <Label htmlFor="paymentDate">Payment Date</Label>
                   <Input
@@ -328,10 +428,10 @@ export default function BillsPage() {
                     value={paymentData.paymentDate}
                     onChange={(e) => setPaymentData((prev) => ({ ...prev, paymentDate: e.target.value }))}
                     min={new Date().toISOString().split("T")[0]}
+                    disabled={isAccountRestricted}
                   />
                 </div>
-
-                <Button type="submit" className="w-full">
+                <Button type="submit" className="w-full" disabled={isAccountRestricted}>
                   Pay Bill
                 </Button>
               </form>
