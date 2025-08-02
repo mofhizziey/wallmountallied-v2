@@ -1,7 +1,7 @@
 "use client"
 
 import { Label } from "@/components/ui/label"
-import { useState, useEffect } from "react"
+import { useState, useEffect, useCallback } from "react"
 import { useRouter } from "next/navigation"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Button } from "@/components/ui/button"
@@ -65,8 +65,8 @@ export default function AdminDashboardPage() {
   const [filteredUsers, setFilteredUsers] = useState<User[]>([])
   const [searchTerm, setSearchTerm] = useState("")
   const [statusFilter, setStatusFilter] = useState("all")
-  const [verificationFilter, setVerificationFilter] = useState("all") // New filter state
-  const [kycFilter, setKycFilter] = useState("all") // New filter state
+  const [verificationFilter, setVerificationFilter] = useState("all")
+  const [kycFilter, setKycFilter] = useState("all")
   const [selectedUser, setSelectedUser] = useState<User | null>(null)
   const [isBalanceDialogOpen, setIsBalanceDialogOpen] = useState(false)
   const [isTransferDialogOpen, setIsTransferDialogOpen] = useState(false)
@@ -88,6 +88,15 @@ export default function AdminDashboardPage() {
   })
   const [editUserData, setEditUserData] = useState<Partial<User>>({})
 
+  // Function to load data from DataStore
+  const loadData = useCallback(async () => {
+    const dataStore = DataStore.getInstance()
+    const allUsers = dataStore.getAllUsers()
+    const allTransactions = dataStore.getAllTransactions()
+    setUsers(allUsers)
+    setTransactions(allTransactions)
+  }, [])
+
   useEffect(() => {
     // Check admin authentication
     const isAdminAuthenticated = localStorage.getItem("isAdminAuthenticated")
@@ -96,7 +105,7 @@ export default function AdminDashboardPage() {
       return
     }
     loadData()
-  }, [router])
+  }, [router, loadData])
 
   useEffect(() => {
     // Filter users based on search and status
@@ -120,15 +129,7 @@ export default function AdminDashboardPage() {
       filtered = filtered.filter((user) => (kycFilter === "true" ? user.kycCompleted : !user.kycCompleted))
     }
     setFilteredUsers(filtered)
-  }, [users, searchTerm, statusFilter, verificationFilter, kycFilter]) // Added new filter states to dependency array
-
-  const loadData = async () => {
-    const dataStore = DataStore.getInstance()
-    const allUsers = dataStore.getAllUsers()
-    const allTransactions = dataStore.getAllTransactions()
-    setUsers(allUsers)
-    setTransactions(allTransactions)
-  }
+  }, [users, searchTerm, statusFilter, verificationFilter, kycFilter])
 
   const updateUserStatus = async (userId: string, newStatus: User["accountStatus"]) => {
     const dataStore = DataStore.getInstance()
@@ -143,7 +144,7 @@ export default function AdminDashboardPage() {
       }),
     })
     if (updatedUser) {
-      await loadData()
+      await loadData() // Reload data after update
       toast({
         title: "User Account Status Updated",
         description: `User account status changed to ${newStatus}`,
@@ -155,7 +156,7 @@ export default function AdminDashboardPage() {
     const dataStore = DataStore.getInstance()
     const updatedUser = await dataStore.updateUser(userId, { verificationStatus: newStatus })
     if (updatedUser) {
-      await loadData()
+      await loadData() // Reload data after update
       toast({
         title: "Verification Status Updated",
         description: `User verification status changed to ${newStatus}`,
@@ -215,7 +216,7 @@ export default function AdminDashboardPage() {
         category: "Admin Action",
         fromAccount: balanceUpdateData.accountType,
       })
-      await loadData()
+      await loadData() // Reload data after update
       setIsBalanceDialogOpen(false)
       setBalanceUpdateData({
         userId: "",
@@ -315,7 +316,7 @@ export default function AdminDashboardPage() {
       fromAccount: transferData.toAccount,
     })
 
-    await loadData()
+    await loadData() // Reload data after update
     setIsTransferDialogOpen(false)
     setTransferData({
       fromUserId: "",
@@ -336,7 +337,7 @@ export default function AdminDashboardPage() {
     const dataStore = DataStore.getInstance()
     const updatedUser = await dataStore.updateUser(selectedUser.id, editUserData)
     if (updatedUser) {
-      await loadData()
+      await loadData() // Reload data after update
       setIsEditUserDialogOpen(false)
       setEditUserData({})
       toast({
@@ -347,15 +348,15 @@ export default function AdminDashboardPage() {
   }
 
   const handleLogout = () => {
-    // Clear authentication tokens first
-    localStorage.removeItem("isAdminAuthenticated")
-    localStorage.removeItem("currentAdminId")
-
-    // Show toast notification
+    // Show toast notification first
     toast({
       title: "Logged out",
       description: "Admin session ended",
     })
+
+    // Clear authentication tokens
+    localStorage.removeItem("isAdminAuthenticated")
+    localStorage.removeItem("currentAdminId")
 
     // Redirect to admin login page and replace history entry
     window.location.replace("/admin")
@@ -388,7 +389,7 @@ export default function AdminDashboardPage() {
         return "bg-red-100 text-red-800"
       case "closed":
         return "bg-gray-100 text-gray-800"
-      case "locked": // Added locked status color
+      case "locked":
         return "bg-purple-100 text-purple-800"
       default:
         return "bg-gray-100 text-gray-800"
@@ -415,7 +416,7 @@ export default function AdminDashboardPage() {
     verifiedUsers: users.filter((u) => u.accountStatus === "verified").length,
     pendingUsers: users.filter((u) => u.accountStatus === "pending").length,
     suspendedUsers: users.filter((u) => u.accountStatus === "suspended").length,
-    lockedUsers: users.filter((u) => u.accountStatus === "locked").length, // Added locked users stat
+    lockedUsers: users.filter((u) => u.accountStatus === "locked").length,
     totalDeposits: users.reduce((sum, u) => sum + u.checkingBalance + u.savingsBalance, 0),
     totalTransactions: transactions.length,
   }
