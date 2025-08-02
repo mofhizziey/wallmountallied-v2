@@ -42,6 +42,17 @@ export interface Transaction {
   date: string
 }
 
+export interface Bill {
+  id: string
+  userId: string // Added userId to link bills to users
+  company: string
+  category: string
+  amount: number
+  dueDate: string
+  status: "paid" | "pending" | "overdue"
+  // icon: any; // Icons are not serializable in JSON, will handle in component
+}
+
 export interface AdminUser {
   id: string
   username: string
@@ -54,6 +65,7 @@ export interface AdminUser {
 export interface BankData {
   users: User[]
   transactions: Transaction[]
+  bills: Bill[] // Added bills to BankData
   admins: AdminUser[]
   settings: {
     requireSelfieVerification: boolean
@@ -84,6 +96,7 @@ const CURRENT_VERSION = "1.1.0"
 const defaultBankData: BankData = {
   users: [],
   transactions: [],
+  bills: [], // Initialize bills as empty
   admins: [
     {
       id: "admin-1",
@@ -207,6 +220,7 @@ export class DataStore {
       typeof data === "object" &&
       Array.isArray(data.users) &&
       Array.isArray(data.transactions) &&
+      Array.isArray(data.bills) && // Validate bills array
       Array.isArray(data.admins) &&
       data.settings &&
       typeof data.settings === "object" &&
@@ -223,6 +237,7 @@ export class DataStore {
       version: CURRENT_VERSION,
       lastUpdated: new Date().toISOString(),
       metadata: oldData.metadata || defaultBankData.metadata,
+      bills: oldData.bills || [], // Ensure bills array exists during migration
     }
     this.saveData()
   }
@@ -487,6 +502,7 @@ export class DataStore {
       if (userIndex !== -1) {
         this.data.users.splice(userIndex, 1)
         this.data.transactions = this.data.transactions.filter((txn) => txn.userId !== id)
+        this.data.bills = this.data.bills.filter((bill) => bill.userId !== id) // Delete user's bills
         await this.saveData()
         console.log(`User deleted: ${id}`)
         return true
@@ -540,6 +556,49 @@ export class DataStore {
     } catch (error) {
       console.error("Error getting all transactions:", error)
       return []
+    }
+  }
+
+  // Bill management methods
+  async createBill(billData: Omit<Bill, "id" | "status">): Promise<Bill> {
+    try {
+      const bill: Bill = {
+        ...billData,
+        id: `bill-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
+        status: "pending", // New bills are pending by default
+      }
+      this.data.bills.push(bill)
+      await this.saveData()
+      console.log(`Bill created: ${bill.id} for user ${bill.userId}`)
+      return bill
+    } catch (error) {
+      console.error("Error creating bill:", error)
+      throw new Error("Failed to create bill")
+    }
+  }
+
+  getBillsByUserId(userId: string): Bill[] {
+    try {
+      return this.data.bills.filter((bill) => bill.userId === userId)
+    } catch (error) {
+      console.error("Error getting bills by user ID:", error)
+      return []
+    }
+  }
+
+  async updateBill(billId: string, updates: Partial<Bill>): Promise<Bill | undefined> {
+    try {
+      const billIndex = this.data.bills.findIndex((bill) => bill.id === billId)
+      if (billIndex !== -1) {
+        this.data.bills[billIndex] = { ...this.data.bills[billIndex], ...updates }
+        await this.saveData()
+        console.log(`Bill updated: ${billId}`)
+        return this.data.bills[billIndex]
+      }
+      return undefined
+    } catch (error) {
+      console.error("Error updating bill:", error)
+      return undefined
     }
   }
 

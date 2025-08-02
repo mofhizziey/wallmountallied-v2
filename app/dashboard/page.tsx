@@ -114,8 +114,6 @@ export default function DashboardPage() {
       <div className="space-y-6">
         {/* Welcome Section */}
         <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-          {" "}
-          {/* Responsive layout */}
           <div>
             <h1 className="text-3xl font-bold text-gray-900">Welcome back, {userData.firstName}!</h1>
             <p className="text-gray-600">Here's what's happening with your accounts today.</p>
@@ -241,8 +239,11 @@ export default function DashboardPage() {
             ) : (
               <div className="space-y-4">
                 {transactions.map((transaction) => (
-                  <div key={transaction.id} className="flex items-center justify-between p-4 border rounded-lg">
-                    <div className="flex items-center space-x-4">
+                  <div
+                    key={transaction.id}
+                    className="flex flex-wrap items-center justify-between p-4 border rounded-lg gap-2" // Added flex-wrap and gap-2
+                  >
+                    <div className="flex items-center space-x-4 min-w-0">
                       <div
                         className={`p-2 rounded-full ${
                           transaction.type === "credit" ? "bg-green-100 text-green-600" : "bg-red-100 text-red-600"
@@ -254,19 +255,19 @@ export default function DashboardPage() {
                           <ArrowUpRight className="h-4 w-4" />
                         )}
                       </div>
-                      <div>
-                        <p className="font-medium">{transaction.description}</p>
+                      <div className="min-w-0">
+                        <p className="font-medium truncate">{transaction.description}</p>
                         <p className="text-sm text-gray-500">{formatDate(transaction.date)}</p>
                       </div>
                     </div>
-                    <div className="text-right">
+                    <div className="text-right flex flex-col items-end min-w-0">
                       <p
-                        className={`font-semibold ${transaction.type === "credit" ? "text-green-600" : "text-red-600"}`}
+                        className={`font-semibold ${transaction.type === "credit" ? "text-green-600" : "text-red-600"} truncate`}
                       >
                         {transaction.type === "credit" ? "+" : "-"}
                         {formatCurrency(transaction.amount)}
                       </p>
-                      <Badge variant="secondary" className="text-xs">
+                      <Badge variant="secondary" className="text-xs mt-1">
                         {transaction.category}
                       </Badge>
                     </div>

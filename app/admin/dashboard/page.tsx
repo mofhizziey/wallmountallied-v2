@@ -434,8 +434,6 @@ export default function AdminDashboardPage() {
               </div>
             </div>
             <div className="flex flex-wrap items-center gap-2">
-              {" "}
-              {/* Changed to flex-wrap and gap-2 */}
               <Dialog open={isBalanceDialogOpen} onOpenChange={setIsBalanceDialogOpen}>
                 <DialogTrigger asChild>
                   <Button>
@@ -444,8 +442,6 @@ export default function AdminDashboardPage() {
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
-                  {" "}
-                  {/* Added sm:max-w */}
                   <DialogHeader>
                     <DialogTitle>Update User Balance</DialogTitle>
                     <DialogDescription>Modify a user's account balance with proper documentation</DialogDescription>
@@ -470,8 +466,6 @@ export default function AdminDashboardPage() {
                       </Select>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {" "}
-                      {/* Responsive grid */}
                       <div className="space-y-2">
                         <Label htmlFor="account-type">Account Type</Label>
                         <Select
@@ -544,16 +538,12 @@ export default function AdminDashboardPage() {
                   </Button>
                 </DialogTrigger>
                 <DialogContent className="sm:max-w-[425px]">
-                  {" "}
-                  {/* Added sm:max-w */}
                   <DialogHeader>
                     <DialogTitle>Transfer Funds Between Users</DialogTitle>
                     <DialogDescription>Move money between user accounts</DialogDescription>
                   </DialogHeader>
                   <div className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {" "}
-                      {/* Responsive grid */}
                       <div className="space-y-2">
                         <Label htmlFor="from-user">From User</Label>
                         <Select
@@ -594,8 +584,6 @@ export default function AdminDashboardPage() {
                       </div>
                     </div>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {" "}
-                      {/* Responsive grid */}
                       <div className="space-y-2">
                         <Label htmlFor="from-account">From Account</Label>
                         <Select
@@ -670,8 +658,6 @@ export default function AdminDashboardPage() {
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
         {/* Stats Overview */}
         <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-6 gap-6 mb-8">
-          {" "}
-          {/* Responsive grid */}
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
               <CardTitle className="text-sm font-medium">Total Users</CardTitle>
@@ -710,7 +696,7 @@ export default function AdminDashboardPage() {
           </Card>
           <Card>
             <CardHeader className="flex flex-row items-center justify-between space-y-0 pb-2">
-              <CardTitle className="text-sm font-medium">Locked</CardTitle> {/* New stat card */}
+              <CardTitle className="text-sm font-medium">Locked</CardTitle>
               <Lock className="h-4 w-4 text-purple-600" />
             </CardHeader>
             <CardContent>
@@ -731,8 +717,6 @@ export default function AdminDashboardPage() {
         <Card>
           <CardHeader>
             <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4">
-              {" "}
-              {/* Responsive layout */}
               <div>
                 <CardTitle>User Management</CardTitle>
                 <CardDescription>View and manage all user accounts</CardDescription>
@@ -748,8 +732,6 @@ export default function AdminDashboardPage() {
           <CardContent>
             {/* Filters */}
             <div className="flex flex-col sm:flex-row space-y-4 sm:space-y-0 sm:space-x-4 mb-6">
-              {" "}
-              {/* Responsive filters */}
               <div className="flex-1">
                 <div className="relative">
                   <Search className="absolute left-3 top-1/2 transform -translate-y-1/2 h-4 w-4 text-gray-400" />
@@ -763,8 +745,6 @@ export default function AdminDashboardPage() {
               </div>
               <Select value={statusFilter} onValueChange={setStatusFilter}>
                 <SelectTrigger className="w-full sm:w-48">
-                  {" "}
-                  {/* Responsive width */}
                   <Filter className="h-4 w-4 mr-2" />
                   <SelectValue placeholder="Account Status" />
                 </SelectTrigger>
@@ -774,7 +754,7 @@ export default function AdminDashboardPage() {
                   <SelectItem value="verified">Verified</SelectItem>
                   <SelectItem value="suspended">Suspended</SelectItem>
                   <SelectItem value="closed">Closed</SelectItem>
-                  <SelectItem value="locked">Locked</SelectItem> {/* Added locked filter option */}
+                  <SelectItem value="locked">Locked</SelectItem>
                 </SelectContent>
               </Select>
               <Select value={verificationFilter} onValueChange={setVerificationFilter}>
@@ -806,8 +786,6 @@ export default function AdminDashboardPage() {
             {/* Users Table */}
             <div className="overflow-x-auto">
               <table className="min-w-full divide-y divide-gray-200">
-                {" "}
-                {/* min-w-full for responsiveness */}
                 <thead className="bg-gray-50">
                   <tr>
                     <th className="text-left py-3 px-4 font-medium text-gray-500 uppercase tracking-wider">User</th>
@@ -825,11 +803,11 @@ export default function AdminDashboardPage() {
                   {filteredUsers.map((user) => (
                     <tr key={user.id} className="hover:bg-gray-50">
                       <td className="py-3 px-4 whitespace-nowrap">
-                        <div>
-                          <p className="font-medium text-gray-900">
+                        <div className="min-w-0">
+                          <p className="font-medium text-gray-900 truncate">
                             {user.firstName} {user.lastName}
                           </p>
-                          <p className="text-sm text-gray-600">{user.email}</p>
+                          <p className="text-sm text-gray-600 truncate">{user.email}</p>
                         </div>
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
@@ -859,8 +837,6 @@ export default function AdminDashboardPage() {
                       </td>
                       <td className="py-3 px-4 whitespace-nowrap">
                         <div className="flex flex-wrap gap-2">
-                          {" "}
-                          {/* Changed to flex-wrap and gap-2 */}
                           <Button size="sm" variant="outline" onClick={() => setSelectedUser(user)}>
                             <Eye className="h-3 w-3" />
                           </Button>
@@ -946,8 +922,6 @@ export default function AdminDashboardPage() {
               <CardContent className="space-y-6">
                 <Tabs defaultValue="personal">
                   <TabsList className="grid w-full grid-cols-2 sm:grid-cols-4">
-                    {" "}
-                    {/* Responsive grid */}
                     <TabsTrigger value="personal">Personal</TabsTrigger>
                     <TabsTrigger value="account">Account</TabsTrigger>
                     <TabsTrigger value="verification">Verification</TabsTrigger>
@@ -955,8 +929,6 @@ export default function AdminDashboardPage() {
                   </TabsList>
                   <TabsContent value="personal" className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {" "}
-                      {/* Responsive grid */}
                       <div>
                         <Label>First Name</Label>
                         <p className="font-medium">{selectedUser.firstName}</p>
@@ -991,8 +963,6 @@ export default function AdminDashboardPage() {
                   </TabsContent>
                   <TabsContent value="account" className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {" "}
-                      {/* Responsive grid */}
                       <div>
                         <Label>Account Number</Label>
                         <p className="font-mono font-medium">{selectedUser.accountNumber}</p>
@@ -1015,7 +985,7 @@ export default function AdminDashboardPage() {
                               <SelectItem value="verified">Verified</SelectItem>
                               <SelectItem value="suspended">Suspended</SelectItem>
                               <SelectItem value="closed">Closed</SelectItem>
-                              <SelectItem value="locked">Locked</SelectItem> {/* Added locked status option */}
+                              <SelectItem value="locked">Locked</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1044,8 +1014,6 @@ export default function AdminDashboardPage() {
                   </TabsContent>
                   <TabsContent value="verification" className="space-y-4">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                      {" "}
-                      {/* Responsive grid */}
                       <div>
                         <Label>Verification Status</Label>
                         <div className="flex items-center space-x-2">
@@ -1082,7 +1050,7 @@ export default function AdminDashboardPage() {
                         <img
                           src={selectedUser.selfieUrl || "/placeholder.svg"}
                           alt="User selfie"
-                          className="w-32 h-32 object-cover rounded-lg border mt-2"
+                          className="max-w-full h-auto w-32 h-32 object-cover rounded-lg border mt-2"
                         />
                       </div>
                     )}
@@ -1093,7 +1061,7 @@ export default function AdminDashboardPage() {
                           <img
                             src={selectedUser.licenseUrl || "/placeholder.svg"}
                             alt="Driver's license"
-                            className="w-64 h-40 object-contain border rounded-lg"
+                            className="max-w-full h-auto w-64 h-40 object-contain border rounded-lg"
                           />
                           <div className="text-sm text-gray-600">
                             <p>License #: {selectedUser.licenseNumber}</p>
@@ -1148,16 +1116,12 @@ export default function AdminDashboardPage() {
         {/* Edit User Dialog */}
         <Dialog open={isEditUserDialogOpen} onOpenChange={setIsEditUserDialogOpen}>
           <DialogContent className="sm:max-w-[425px]">
-            {" "}
-            {/* Added sm:max-w */}
             <DialogHeader>
               <DialogTitle>Edit User Information</DialogTitle>
               <DialogDescription>Update user's personal information</DialogDescription>
             </DialogHeader>
             <div className="space-y-4">
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-                {" "}
-                {/* Responsive grid */}
                 <div className="space-y-2">
                   <Label htmlFor="edit-first-name">First Name</Label>
                   <Input
@@ -1200,8 +1164,6 @@ export default function AdminDashboardPage() {
                 />
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                {" "}
-                {/* Responsive grid */}
                 <div className="space-y-2">
                   <Label htmlFor="edit-city">City</Label>
                   <Input

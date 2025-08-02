@@ -9,26 +9,26 @@ import { Input } from "@/components/ui/input"
 import { Label } from "@/components/ui/label"
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { Calendar, CreditCard, Zap, Wifi, Car, Home } from "lucide-react"
+import { Calendar, CreditCard, Zap, Car, Home } from "lucide-react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { useToast } from "@/hooks/use-toast"
-import { DataStore, type User } from "@/lib/data-store" // Import User and DataStore
+import { DataStore, type User, type Bill } from "@/lib/data-store"
 
-interface Bill {
-  id: string
-  company: string
-  category: string
-  amount: number
-  dueDate: string
-  status: "paid" | "pending" | "overdue"
-  icon: any
+// Map category to icon for display
+const categoryIcons: { [key: string]: any } = {
+  Utilities: Zap,
+  Credit: CreditCard,
+  Insurance: Car,
+  Housing: Home,
+  
+  // Add more categories and icons as needed
 }
 
 export default function BillsPage() {
   const router = useRouter()
   const { toast } = useToast()
-  const [userData, setUserData] = useState<User | null>(null) // Use User type
-  const [bills, setBills] = useState<Bill[]>([])
+  const [userData, setUserData] = useState<User | null>(null)
+  const [bills, setBills] = useState<Bill[]>([]) // Bills now fetched from DataStore
   const [paymentData, setPaymentData] = useState({
     billId: "",
     amount: "",
@@ -38,7 +38,7 @@ export default function BillsPage() {
 
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated")
-    const currentUserId = localStorage.getItem("currentUserId") // Get current user ID
+    const currentUserId = localStorage.getItem("currentUserId")
 
     if (!isAuthenticated || !currentUserId) {
       router.push("/login")
@@ -46,7 +46,7 @@ export default function BillsPage() {
     }
 
     const dataStore = DataStore.getInstance()
-    const user = dataStore.getUserById(currentUserId) // Fetch user data from DataStore
+    const user = dataStore.getUserById(currentUserId)
 
     if (!user) {
       router.push("/login")
@@ -67,56 +67,9 @@ export default function BillsPage() {
     }
 
     setUserData(user)
-
-    // Sample bills data (static for now, could be fetched from DataStore if bills were stored there)
-    const sampleBills: Bill[] = [
-      {
-        id: "1",
-        company: "Electric Company",
-        category: "Utilities",
-        amount: 125.5,
-        dueDate: new Date(Date.now() + 5 * 24 * 60 * 60 * 1000).toISOString(),
-        status: "pending",
-        icon: Zap,
-      },
-      {
-        id: "2",
-        company: "Internet Provider",
-        category: "Utilities",
-        amount: 79.99,
-        dueDate: new Date(Date.now() + 10 * 24 * 60 * 60 * 1000).toISOString(),
-        status: "pending",
-        icon: Wifi,
-      },
-      {
-        id: "3",
-        company: "Credit Card",
-        category: "Credit",
-        amount: 450.0,
-        dueDate: new Date(Date.now() + 15 * 24 * 60 * 60 * 1000).toISOString(),
-        status: "pending",
-        icon: CreditCard,
-      },
-      {
-        id: "4",
-        company: "Car Insurance",
-        category: "Insurance",
-        amount: 180.0,
-        dueDate: new Date(Date.now() - 2 * 24 * 60 * 60 * 1000).toISOString(),
-        status: "paid",
-        icon: Car,
-      },
-      {
-        id: "5",
-        company: "Mortgage",
-        category: "Housing",
-        amount: 1850.0,
-        dueDate: new Date(Date.now() + 20 * 24 * 60 * 60 * 1000).toISOString(),
-        status: "pending",
-        icon: Home,
-      },
-    ]
-    setBills(sampleBills)
+    // Fetch bills from DataStore for the current user
+    const userBills = dataStore.getBillsByUserId(currentUserId)
+    setBills(userBills)
   }, [router, toast])
 
   const handlePayBill = async (e: React.FormEvent) => {
@@ -192,10 +145,10 @@ export default function BillsPage() {
       updatedUser.availableSavingsBalance = availableBalance - amount
     }
 
-    const result = await dataStore.updateUser(userData.id, updatedUser)
+    const userUpdateResult = await dataStore.updateUser(userData.id, updatedUser)
 
-    if (result) {
-      setUserData(result) // Update local user data
+    if (userUpdateResult) {
+      setUserData(userUpdateResult) // Update local user data
       // Create transaction record
       await dataStore.createTransaction({
         userId: userData.id,
@@ -206,19 +159,30 @@ export default function BillsPage() {
         fromAccount: paymentData.fromAccount as "checking" | "savings",
       })
 
-      // Update bill status locally (since bills are sample data)
-      setBills((prev) => prev.map((b) => (b.id === paymentData.billId ? { ...b, status: "paid" as const } : b)))
-      toast({
-        title: "Payment Successful!",
-        description: `Payment of ${formatCurrency(amount)} to ${bill.company} has been processed.`,
-      })
-      // Reset form
-      setPaymentData({
-        billId: "",
-        amount: "",
-        paymentDate: "",
-        fromAccount: "",
-      })
+      // Update bill status in DataStore
+      const billUpdateResult = await dataStore.updateBill(bill.id, { status: "paid" })
+
+      if (billUpdateResult) {
+        // Re-fetch all bills to update the list
+        setBills(dataStore.getBillsByUserId(userData.id))
+        toast({
+          title: "Payment Successful!",
+          description: `Payment of ${formatCurrency(amount)} to ${bill.company} has been processed.`,
+        })
+        // Reset form
+        setPaymentData({
+          billId: "",
+          amount: "",
+          paymentDate: "",
+          fromAccount: "",
+        })
+      } else {
+        toast({
+          title: "Payment Failed",
+          description: "Failed to update bill status. Please contact support.",
+          variant: "destructive",
+        })
+      }
     } else {
       toast({
         title: "Payment Failed",
@@ -270,7 +234,11 @@ export default function BillsPage() {
   const isAccountRestricted = userData.accountStatus !== "verified" || userData.availableCheckingBalance === 0
 
   const pendingBills = bills.filter((bill) => bill.status === "pending")
+  const paidBills = bills.filter((bill) => bill.status === "paid")
   const totalDue = pendingBills.reduce((sum, bill) => sum + bill.amount, 0)
+  const totalPaidThisMonth = paidBills
+    .filter((bill) => new Date(bill.dueDate).getMonth() === new Date().getMonth())
+    .reduce((sum, bill) => sum + bill.amount, 0)
 
   return (
     <DashboardLayout>
@@ -298,10 +266,18 @@ export default function BillsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {pendingBills.length > 0 ? formatDate(pendingBills[0].dueDate) : "None"}
+                {pendingBills.length > 0
+                  ? formatDate(
+                      pendingBills.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
+                        .dueDate,
+                    )
+                  : "None"}
               </div>
               <p className="text-xs text-muted-foreground">
-                {pendingBills.length > 0 ? pendingBills[0].company : "All bills paid"}
+                {pendingBills.length > 0
+                  ? pendingBills.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
+                      .company
+                  : "All bills paid"}
               </p>
             </CardContent>
           </Card>
@@ -311,7 +287,7 @@ export default function BillsPage() {
               <CreditCard className="h-4 w-4 text-muted-foreground" />
             </CardHeader>
             <CardContent>
-              <div className="text-2xl font-bold">{formatCurrency(2485.49)}</div>
+              <div className="text-2xl font-bold">{formatCurrency(totalPaidThisMonth)}</div>
               <p className="text-xs text-muted-foreground">Total bills paid</p>
             </CardContent>
           </Card>
@@ -320,32 +296,40 @@ export default function BillsPage() {
           {/* Bills List */}
           <Card>
             <CardHeader>
-              <CardTitle>Your Bills</CardTitle>
-              <CardDescription>Upcoming and recent bill payments</CardDescription>
+              <CardTitle>Your Paid Bills</CardTitle>
+              <CardDescription>Your successfully paid bills</CardDescription>
             </CardHeader>
             <CardContent>
-              <div className="space-y-4">
-                {bills.map((bill) => {
-                  const IconComponent = bill.icon
-                  return (
-                    <div key={bill.id} className="flex items-center justify-between p-4 border rounded-lg">
-                      <div className="flex items-center space-x-4">
-                        <div className="p-2 bg-blue-100 rounded-full">
-                          <IconComponent className="h-4 w-4 text-blue-600" />
+              {paidBills.length === 0 ? (
+                <div className="text-center py-8">
+                  <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                  <p className="text-gray-600 mb-2">No paid bills yet</p>
+                  <p className="text-sm text-gray-500">Successfully paid bills will appear here.</p>
+                </div>
+              ) : (
+                <div className="space-y-4">
+                  {paidBills.map((bill) => {
+                    const IconComponent = categoryIcons[bill.category] || Home // Default icon
+                    return (
+                      <div key={bill.id} className="flex items-center justify-between p-4 border rounded-lg">
+                        <div className="flex items-center space-x-4">
+                          <div className="p-2 bg-blue-100 rounded-full">
+                            <IconComponent className="h-4 w-4 text-blue-600" />
+                          </div>
+                          <div>
+                            <p className="font-medium">{bill.company}</p>
+                            <p className="text-sm text-gray-500">Due: {formatDate(bill.dueDate)}</p>
+                          </div>
                         </div>
-                        <div>
-                          <p className="font-medium">{bill.company}</p>
-                          <p className="text-sm text-gray-500">Due: {formatDate(bill.dueDate)}</p>
+                        <div className="text-right">
+                          <p className="font-semibold">{formatCurrency(bill.amount)}</p>
+                          <Badge className={getStatusColor(bill.status)}>{bill.status}</Badge>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className="font-semibold">{formatCurrency(bill.amount)}</p>
-                        <Badge className={getStatusColor(bill.status)}>{bill.status}</Badge>
-                      </div>
-                    </div>
-                  )
-                })}
-              </div>
+                    )
+                  })}
+                </div>
+              )}
             </CardContent>
           </Card>
           {/* Payment Form */}
@@ -368,15 +352,17 @@ export default function BillsPage() {
                         amount: selectedBill ? selectedBill.amount.toString() : "",
                       }))
                     }}
-                    disabled={isAccountRestricted}
+                    disabled={isAccountRestricted || pendingBills.length === 0}
                   >
                     <SelectTrigger>
-                      <SelectValue placeholder="Choose a bill to pay" />
+                      <SelectValue
+                        placeholder={pendingBills.length > 0 ? "Choose a bill to pay" : "No pending bills"}
+                      />
                     </SelectTrigger>
                     <SelectContent>
                       {pendingBills.map((bill) => (
                         <SelectItem key={bill.id} value={bill.id}>
-                          {bill.company} - {formatCurrency(bill.amount)}
+                          {bill.company} - {formatCurrency(bill.amount)} (Due: {formatDate(bill.dueDate)})
                         </SelectItem>
                       ))}
                     </SelectContent>
@@ -395,7 +381,7 @@ export default function BillsPage() {
                       className="pl-8"
                       value={paymentData.amount}
                       onChange={(e) => setPaymentData((prev) => ({ ...prev, amount: e.target.value }))}
-                      disabled={isAccountRestricted}
+                      disabled={isAccountRestricted || pendingBills.length === 0}
                     />
                   </div>
                 </div>
@@ -404,7 +390,7 @@ export default function BillsPage() {
                   <Select
                     value={paymentData.fromAccount}
                     onValueChange={(value) => setPaymentData((prev) => ({ ...prev, fromAccount: value }))}
-                    disabled={isAccountRestricted}
+                    disabled={isAccountRestricted || pendingBills.length === 0}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
@@ -428,10 +414,10 @@ export default function BillsPage() {
                     value={paymentData.paymentDate}
                     onChange={(e) => setPaymentData((prev) => ({ ...prev, paymentDate: e.target.value }))}
                     min={new Date().toISOString().split("T")[0]}
-                    disabled={isAccountRestricted}
+                    disabled={isAccountRestricted || pendingBills.length === 0}
                   />
                 </div>
-                <Button type="submit" className="w-full" disabled={isAccountRestricted}>
+                <Button type="submit" className="w-full" disabled={isAccountRestricted || pendingBills.length === 0}>
                   Pay Bill
                 </Button>
               </form>
