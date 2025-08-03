@@ -42,17 +42,6 @@ export interface Transaction {
   date: string
 }
 
-export interface Bill {
-  id: string
-  userId: string // Added userId to link bills to users
-  company: string
-  category: string
-  amount: number
-  dueDate: string
-  status: "paid" | "pending" | "overdue"
-  // icon: any; // Icons are not serializable in JSON, will handle in component
-}
-
 export interface AdminUser {
   id: string
   username: string
@@ -65,7 +54,6 @@ export interface AdminUser {
 export interface BankData {
   users: User[]
   transactions: Transaction[]
-  bills: Bill[] // Added bills to BankData
   admins: AdminUser[]
   settings: {
     requireSelfieVerification: boolean
@@ -92,11 +80,10 @@ const STORAGE_KEYS = {
 // Current data version for migration purposes
 const CURRENT_VERSION = "1.1.0"
 
-// Initialize default data structure without dummy users, transactions, or bills
+// Initialize default data structure
 const defaultBankData: BankData = {
   users: [],
   transactions: [],
-  bills: [],
   admins: [
     {
       id: "admin-1",
@@ -128,7 +115,6 @@ export class DataStore {
   private saveQueue: Promise<void> = Promise.resolve()
 
   private constructor() {
-    console.log("DataStore: Constructor called.")
     this.data = { ...defaultBankData }
     this.initializeStore()
   }
@@ -142,12 +128,7 @@ export class DataStore {
 
   private initializeStore(): void {
     if (typeof window === "undefined") {
-      console.log("DataStore: Running in SSR, skipping localStorage initialization.")
       this.isInitialized = true
-      return
-    }
-    if (this.isInitialized) {
-      console.log("DataStore: Already initialized, skipping.")
       return
     }
     try {
@@ -159,122 +140,115 @@ export class DataStore {
       window.addEventListener("storage", this.handleStorageChange.bind(this))
       // Save data before page unload
       window.addEventListener("beforeunload", () => {
-        console.log("DataStore: beforeunload event - saving data synchronously.")
         this.saveDataSync()
         this.exportToJSON()
       })
-      console.log("DataStore: Initialization complete.")
+      console.log("DataStore initialized successfully")
     } catch (error) {
-      console.error("DataStore: Failed to initialize DataStore:", error)
+      console.error("Failed to initialize DataStore:", error)
       this.handleStorageError()
     }
   }
 
   private loadData(): void {
     if (typeof window === "undefined") return
-    console.log("DataStore: Attempting to load data from localStorage.")
     try {
+      // Try to load from localStorage first
       const stored = localStorage.getItem(STORAGE_KEYS.BANK_DATA)
       if (stored) {
         const parsedData = JSON.parse(stored) as BankData
+        // Validate data structure
         if (this.validateDataStructure(parsedData)) {
           this.data = parsedData
-          console.log("DataStore: Loaded data from localStorage. Current users:", this.data.users.length)
+          // Check if migration is needed
           if (parsedData.version !== CURRENT_VERSION) {
             this.migrateData(parsedData)
           }
         } else {
-          console.warn("DataStore: Invalid data structure in localStorage, attempting JSON recovery.")
+          console.warn("Invalid data structure, attempting JSON recovery")
           this.loadFromJSONBackup()
         }
       } else {
-        console.log("DataStore: No data found in localStorage, attempting JSON backup.")
+        // Try to load from JSON backup
         this.loadFromJSONBackup()
       }
     } catch (error) {
-      console.error("DataStore: Error loading data from localStorage:", error)
+      console.error("Error loading data:", error)
       this.handleStorageError()
-      // Fallback to default if loading fails
-      this.data = { ...defaultBankData }
-      this.saveData() // Immediately save defaults to establish a clean state
-      console.log("DataStore: Fallback to default data due to load error.")
     }
   }
 
   private loadFromJSONBackup(): void {
-    console.log("DataStore: Attempting to load from JSON backup.")
     try {
+      // In a real implementation, this would load from a server or file
+      // For now, we'll use localStorage as a fallback
       const backup = localStorage.getItem(STORAGE_KEYS.BACKUP_DATA)
       if (backup) {
         const backupData = JSON.parse(backup) as BankData
         if (this.validateDataStructure(backupData)) {
           this.data = backupData
-          console.log("DataStore: Loaded from JSON backup. Current users:", this.data.users.length)
+          console.log("Loaded from JSON backup")
           return
         }
       }
-      console.log("DataStore: No valid JSON backup found. Initializing with default data.")
+      // If no backup exists, use defaults
       this.data = { ...defaultBankData }
-      this.saveData() // Immediately save defaults to establish a clean state
+      this.saveData()
+      console.log("Initialized with default data")
     } catch (error) {
-      console.error("DataStore: Error loading from JSON backup:", error)
+      console.error("Error loading from JSON backup:", error)
       this.data = { ...defaultBankData }
-      this.saveData() // Immediately save defaults to establish a clean state
-      console.log("DataStore: Fallback to default data due to backup load error.")
     }
   }
 
   private validateDataStructure(data: any): boolean {
-    const isValid =
+    return (
       data &&
       typeof data === "object" &&
       Array.isArray(data.users) &&
       Array.isArray(data.transactions) &&
-      Array.isArray(data.bills) &&
       Array.isArray(data.admins) &&
       data.settings &&
       typeof data.settings === "object" &&
       data.version &&
       data.lastUpdated
-    console.log("DataStore: Data structure validation result:", isValid)
-    return isValid
+    )
   }
 
   private migrateData(oldData: BankData): void {
-    console.log(`DataStore: Migrating data from version ${oldData.version} to ${CURRENT_VERSION}`)
+    console.log(`Migrating data from version ${oldData.version} to ${CURRENT_VERSION}`)
+    // Add migration logic here as needed
     this.data = {
       ...oldData,
       version: CURRENT_VERSION,
       lastUpdated: new Date().toISOString(),
       metadata: oldData.metadata || defaultBankData.metadata,
-      bills: oldData.bills || [],
     }
     this.saveData()
-    console.log("DataStore: Data migration complete.")
   }
 
   private async saveData(): Promise<void> {
-    console.log("DataStore: Queuing save operation.")
+    // Queue saves to prevent race conditions
     this.saveQueue = this.saveQueue.then(() => this.performSave())
     return this.saveQueue
   }
 
   private async performSave(): Promise<void> {
-    if (typeof window === "undefined" || !this.isInitialized) {
-      console.log("DataStore: Skipping save - not in browser or not initialized.")
-      return
-    }
+    if (typeof window === "undefined" || !this.isInitialized) return
     try {
       this.data.lastUpdated = new Date().toISOString()
       const dataToSave = JSON.stringify(this.data)
+      // Save to localStorage
       localStorage.setItem(STORAGE_KEYS.BANK_DATA, dataToSave)
+      // Create backup
       localStorage.setItem(STORAGE_KEYS.BACKUP_DATA, dataToSave)
+      // Save version and metadata
       localStorage.setItem(STORAGE_KEYS.VERSION, CURRENT_VERSION)
       localStorage.setItem(STORAGE_KEYS.METADATA, JSON.stringify(this.data.metadata))
+      // Export to JSON (simulated - in real app would save to server/file)
       await this.exportToJSON()
-      console.log("DataStore: Data saved successfully. Current users:", this.data.users.length)
     } catch (error) {
-      console.error("DataStore: Error saving data:", error)
+      console.error("Error saving data:", error)
       this.handleStorageError()
     }
   }
@@ -286,23 +260,46 @@ export class DataStore {
       const dataToSave = JSON.stringify(this.data)
       localStorage.setItem(STORAGE_KEYS.BANK_DATA, dataToSave)
       localStorage.setItem(STORAGE_KEYS.BACKUP_DATA, dataToSave)
-      console.log("DataStore: Data saved synchronously.")
     } catch (error) {
-      console.error("DataStore: Error saving data synchronously:", error)
+      console.error("Error saving data synchronously:", error)
     }
   }
 
   private async exportToJSON(): Promise<void> {
     try {
+      // In a real implementation, this would save to a server or file system
+      // For demo purposes, we'll save to a downloadable blob URL
       const jsonData = JSON.stringify(this.data, null, 2)
       const blob = new Blob([jsonData], { type: "application/json" })
       const url = URL.createObjectURL(blob)
+      // Store the blob URL for potential download
       sessionStorage.setItem("data_export_url", url)
       this.data.metadata.lastBackup = new Date().toISOString()
-      console.log("DataStore: Data exported to JSON successfully.")
+      console.log("Data exported to JSON successfully")
     } catch (error) {
-      console.error("DataStore: Error exporting to JSON:", error)
+      console.error("Error exporting to JSON:", error)
     }
+  }
+
+  private handleStorageError(): void {
+    console.warn("Storage error detected, attempting recovery...")
+    try {
+      // Try to load backup
+      const backup = localStorage.getItem(STORAGE_KEYS.BACKUP_DATA)
+      if (backup) {
+        const backupData = JSON.parse(backup) as BankData
+        if (this.validateDataStructure(backupData)) {
+          this.data = backupData
+          console.log("Successfully recovered from backup")
+          return
+        }
+      }
+    } catch (error) {
+      console.error("Backup recovery failed:", error)
+    }
+    // If all else fails, use defaults
+    this.data = { ...defaultBankData }
+    console.log("Using default data due to storage errors")
   }
 
   private handleStorageChange(event: StorageEvent): void {
@@ -311,32 +308,27 @@ export class DataStore {
         const newData = JSON.parse(event.newValue) as BankData
         if (this.validateDataStructure(newData)) {
           this.data = newData
-          console.log("DataStore: Data synchronized from another tab. Current users:", this.data.users.length)
+          console.log("Data synchronized from another tab")
         }
       } catch (error) {
-        console.error("DataStore: Error synchronizing data from another tab:", error)
+        console.error("Error synchronizing data from another tab:", error)
       }
     }
   }
 
   private setupPeriodicOperations(): void {
+    // Create backup every 2 minutes
     setInterval(
       () => {
         try {
-          console.log("DataStore: Performing periodic save and export.")
           this.saveDataSync()
           this.exportToJSON()
         } catch (error) {
-          console.error("DataStore: Periodic operations failed:", error)
+          console.error("Periodic operations failed:", error)
         }
       },
       2 * 60 * 1000,
     ) // 2 minutes
-  }
-
-  private handleStorageError(): void {
-    console.error("DataStore: A storage error occurred. This might indicate localStorage issues.")
-    // In a production app, you might want to notify the user or switch to a different storage mechanism.
   }
 
   // Authentication methods with enhanced tracking
@@ -356,13 +348,15 @@ export class DataStore {
         return { success: false, error: "Your account has been closed. Please contact support." }
       }
       if (user.accountStatus === "locked") {
+        // Added locked status check
         return { success: false, error: "Your account has been locked. Please contact support." }
       }
+      // Update login metadata
       this.data.metadata.totalLogins++
       await this.saveData()
       return { success: true, user }
     } catch (error) {
-      console.error("DataStore: Authentication error:", error)
+      console.error("Authentication error:", error)
       return { success: false, error: "An unexpected error occurred. Please try again." }
     }
   }
@@ -376,15 +370,17 @@ export class DataStore {
       if (user.pin !== pin) {
         return { success: false, error: "Incorrect PIN. Please try again." }
       }
+      // Update last login
       user.lastLogin = new Date().toISOString()
       await this.saveData()
       return { success: true }
     } catch (error) {
-      console.error("DataStore: PIN validation error:", error)
+      console.error("PIN validation error:", error)
       return { success: false, error: "An unexpected error occurred. Please try again." }
     }
   }
 
+  // Enhanced user creation with better error handling
   async createUser(
     userData: Omit<
       User,
@@ -398,20 +394,25 @@ export class DataStore {
     >,
   ): Promise<{ success: boolean; user?: User; error?: string }> {
     try {
+      // Check if user already exists
       const existingUser = this.data.users.find((u) => u.email.toLowerCase() === userData.email.toLowerCase())
       if (existingUser) {
         return { success: false, error: "An account with this email address already exists" }
       }
+      // Validate required fields
       if (!userData.email || !userData.password || !userData.firstName || !userData.lastName) {
         return { success: false, error: "Please fill in all required fields" }
       }
+      // Validate email format
       const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
       if (!emailRegex.test(userData.email)) {
         return { success: false, error: "Please enter a valid email address" }
       }
+      // Validate password strength
       if (userData.password.length < 6) {
         return { success: false, error: "Password must be at least 6 characters long" }
       }
+      // Validate PIN
       if (!/^\d{4}$/.test(userData.pin)) {
         return { success: false, error: "PIN must be exactly 4 digits" }
       }
@@ -428,19 +429,20 @@ export class DataStore {
       this.data.users.push(user)
       this.data.metadata.totalSignups++
       await this.saveData()
-      console.log(`DataStore: User created: ${user.email}`)
+      console.log(`User created: ${user.email}`)
       return { success: true, user }
     } catch (error) {
-      console.error("DataStore: Error creating user:", error)
+      console.error("Error creating user:", error)
       return { success: false, error: "Failed to create account. Please try again." }
     }
   }
 
+  // Rest of the existing methods remain the same but with async/await pattern
   getUserByEmail(email: string): User | undefined {
     try {
       return this.data.users.find((user) => user.email.toLowerCase() === email.toLowerCase())
     } catch (error) {
-      console.error("DataStore: Error getting user by email:", error)
+      console.error("Error getting user by email:", error)
       return undefined
     }
   }
@@ -449,7 +451,7 @@ export class DataStore {
     try {
       return this.data.users.find((user) => user.id === id)
     } catch (error) {
-      console.error("DataStore: Error getting user by ID:", error)
+      console.error("Error getting user by ID:", error)
       return undefined
     }
   }
@@ -460,23 +462,21 @@ export class DataStore {
       if (userIndex !== -1) {
         this.data.users[userIndex] = { ...this.data.users[userIndex], ...updates }
         await this.saveData()
-        console.log(`DataStore: User updated: ${id}`)
+        console.log(`User updated: ${id}`)
         return this.data.users[userIndex]
       }
       return undefined
     } catch (error) {
-      console.error("DataStore: Error updating user:", error)
+      console.error("Error updating user:", error)
       return undefined
     }
   }
 
   getAllUsers(): User[] {
     try {
-      const users = [...this.data.users]
-      console.log("DataStore: getAllUsers called. Returning", users.length, "users.")
-      return users
+      return [...this.data.users]
     } catch (error) {
-      console.error("DataStore: Error getting all users:", error)
+      console.error("Error getting all users:", error)
       return []
     }
   }
@@ -487,14 +487,13 @@ export class DataStore {
       if (userIndex !== -1) {
         this.data.users.splice(userIndex, 1)
         this.data.transactions = this.data.transactions.filter((txn) => txn.userId !== id)
-        this.data.bills = this.data.bills.filter((bill) => bill.userId !== id)
         await this.saveData()
-        console.log(`DataStore: User deleted: ${id}`)
+        console.log(`User deleted: ${id}`)
         return true
       }
       return false
     } catch (error) {
-      console.error("DataStore: Error deleting user:", error)
+      console.error("Error deleting user:", error)
       return false
     }
   }
@@ -503,7 +502,7 @@ export class DataStore {
     try {
       return this.data.admins.find((admin) => admin.username.toLowerCase() === username.toLowerCase())
     } catch (error) {
-      console.error("DataStore: Error getting admin by username:", error)
+      console.error("Error getting admin by username:", error)
       return undefined
     }
   }
@@ -518,10 +517,10 @@ export class DataStore {
       }
       this.data.transactions.push(transaction)
       await this.saveData()
-      console.log(`DataStore: Transaction created: ${transaction.id}`)
+      console.log(`Transaction created: ${transaction.id}`)
       return transaction
     } catch (error) {
-      console.error("DataStore: Error creating transaction:", error)
+      console.error("Error creating transaction:", error)
       throw new Error("Failed to create transaction")
     }
   }
@@ -530,61 +529,17 @@ export class DataStore {
     try {
       return this.data.transactions.filter((txn) => txn.userId === userId)
     } catch (error) {
-      console.error("DataStore: Error getting transactions by user ID:", error)
+      console.error("Error getting transactions by user ID:", error)
       return []
     }
   }
 
   getAllTransactions(): Transaction[] {
     try {
-      const transactions = [...this.data.transactions]
-      console.log("DataStore: getAllTransactions called. Returning", transactions.length, "transactions.")
-      return transactions
+      return [...this.data.transactions]
     } catch (error) {
-      console.error("DataStore: Error getting all transactions:", error)
+      console.error("Error getting all transactions:", error)
       return []
-    }
-  }
-
-  async createBill(billData: Omit<Bill, "id" | "status">): Promise<Bill> {
-    try {
-      const bill: Bill = {
-        ...billData,
-        id: `bill-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        status: "pending",
-      }
-      this.data.bills.push(bill)
-      await this.saveData()
-      console.log(`DataStore: Bill created: ${bill.id} for user ${bill.userId}`)
-      return bill
-    } catch (error) {
-      console.error("DataStore: Error creating bill:", error)
-      throw new Error("Failed to create bill")
-    }
-  }
-
-  getBillsByUserId(userId: string): Bill[] {
-    try {
-      return this.data.bills.filter((bill) => bill.userId === userId)
-    } catch (error) {
-      console.error("DataStore: Error getting bills by user ID:", error)
-      return []
-    }
-  }
-
-  async updateBill(billId: string, updates: Partial<Bill>): Promise<Bill | undefined> {
-    try {
-      const billIndex = this.data.bills.findIndex((bill) => bill.id === billId)
-      if (billIndex !== -1) {
-        this.data.bills[billIndex] = { ...this.data.bills[billIndex], ...updates }
-        await this.saveData()
-        console.log(`DataStore: Bill updated: ${billId}`)
-        return this.data.bills[billIndex]
-      }
-      return undefined
-    } catch (error) {
-      console.error("DataStore: Error updating bill:", error)
-      return undefined
     }
   }
 
@@ -592,7 +547,7 @@ export class DataStore {
     try {
       return { ...this.data.settings }
     } catch (error) {
-      console.error("DataStore: Error getting settings:", error)
+      console.error("Error getting settings:", error)
       return defaultBankData.settings
     }
   }
@@ -601,9 +556,9 @@ export class DataStore {
     try {
       this.data.settings = { ...this.data.settings, ...settings }
       await this.saveData()
-      console.log("DataStore: Settings updated")
+      console.log("Settings updated")
     } catch (error) {
-      console.error("DataStore: Error updating settings:", error)
+      console.error("Error updating settings:", error)
     }
   }
 
@@ -611,7 +566,7 @@ export class DataStore {
     try {
       return JSON.stringify(this.data, null, 2)
     } catch (error) {
-      console.error("DataStore: Error exporting data:", error)
+      console.error("Error exporting data:", error)
       return "{}"
     }
   }
@@ -622,14 +577,14 @@ export class DataStore {
       if (this.validateDataStructure(importedData)) {
         this.data = importedData
         await this.saveData()
-        console.log("DataStore: Data imported successfully")
+        console.log("Data imported successfully")
         return true
       } else {
-        console.error("DataStore: Invalid data structure for import")
+        console.error("Invalid data structure for import")
         return false
       }
     } catch (error) {
-      console.error("DataStore: Error importing data:", error)
+      console.error("Error importing data:", error)
       return false
     }
   }
@@ -644,9 +599,9 @@ export class DataStore {
       }
       this.data = { ...defaultBankData }
       await this.saveData()
-      console.log("DataStore: All data cleared.")
+      console.log("All data cleared")
     } catch (error) {
-      console.error("DataStore: Error clearing data:", error)
+      console.error("Error clearing data:", error)
     }
   }
 
@@ -664,7 +619,7 @@ export class DataStore {
         storageSize: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEYS.BANK_DATA)?.length || 0 : 0,
       }
     } catch (error) {
-      console.error("DataStore: Error getting data stats:", error)
+      console.error("Error getting data stats:", error)
       return {
         totalUsers: 0,
         totalTransactions: 0,
