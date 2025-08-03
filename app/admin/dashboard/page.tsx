@@ -90,25 +90,30 @@ export default function AdminDashboardPage() {
 
   // Function to load data from DataStore
   const loadData = useCallback(async () => {
+    console.log("AdminDashboardPage: loadData called.")
     const dataStore = DataStore.getInstance()
     const allUsers = dataStore.getAllUsers()
     const allTransactions = dataStore.getAllTransactions()
     setUsers(allUsers)
     setTransactions(allTransactions)
+    console.log("AdminDashboardPage: Users loaded:", allUsers.length, "Transactions loaded:", allTransactions.length)
   }, [])
 
   useEffect(() => {
+    console.log("AdminDashboardPage: useEffect triggered.")
     // Check admin authentication
     const isAdminAuthenticated = localStorage.getItem("isAdminAuthenticated")
     if (!isAdminAuthenticated) {
+      console.log("AdminDashboardPage: Admin not authenticated, redirecting to /admin.")
       router.push("/admin")
       return
     }
+    console.log("AdminDashboardPage: Admin authenticated. Loading data...")
     loadData()
   }, [router, loadData])
 
   useEffect(() => {
-    // Filter users based on search and status
+    console.log("AdminDashboardPage: Filtering users based on search and filters.")
     let filtered = users
     if (searchTerm) {
       filtered = filtered.filter(
@@ -129,13 +134,14 @@ export default function AdminDashboardPage() {
       filtered = filtered.filter((user) => (kycFilter === "true" ? user.kycCompleted : !user.kycCompleted))
     }
     setFilteredUsers(filtered)
+    console.log("AdminDashboardPage: Filtered users count:", filtered.length)
   }, [users, searchTerm, statusFilter, verificationFilter, kycFilter])
 
   const updateUserStatus = async (userId: string, newStatus: User["accountStatus"]) => {
+    console.log(`AdminDashboardPage: Attempting to update user ${userId} status to ${newStatus}.`)
     const dataStore = DataStore.getInstance()
     const updatedUser = await dataStore.updateUser(userId, {
       accountStatus: newStatus,
-      // If verifying, also update available balances
       ...(newStatus === "verified" && {
         availableCheckingBalance: dataStore.getUserById(userId)?.checkingBalance || 0,
         availableSavingsBalance: dataStore.getUserById(userId)?.savingsBalance || 0,
@@ -144,38 +150,50 @@ export default function AdminDashboardPage() {
       }),
     })
     if (updatedUser) {
-      await loadData() // Reload data after update
+      await loadData()
       toast({
         title: "User Account Status Updated",
         description: `User account status changed to ${newStatus}`,
       })
+      console.log(`AdminDashboardPage: User ${userId} status updated successfully.`)
+    } else {
+      console.error(`AdminDashboardPage: Failed to update user ${userId} status.`)
     }
   }
 
   const updateVerificationStatus = async (userId: string, newStatus: User["verificationStatus"]) => {
+    console.log(`AdminDashboardPage: Attempting to update user ${userId} verification status to ${newStatus}.`)
     const dataStore = DataStore.getInstance()
     const updatedUser = await dataStore.updateUser(userId, { verificationStatus: newStatus })
     if (updatedUser) {
-      await loadData() // Reload data after update
+      await loadData()
       toast({
         title: "Verification Status Updated",
         description: `User verification status changed to ${newStatus}`,
       })
+      console.log(`AdminDashboardPage: User ${userId} verification status updated successfully.`)
+    } else {
+      console.error(`AdminDashboardPage: Failed to update user ${userId} verification status.`)
     }
   }
 
   const handleBalanceUpdate = async () => {
+    console.log("AdminDashboardPage: Handling balance update.")
     if (!balanceUpdateData.userId || balanceUpdateData.amount <= 0 || !balanceUpdateData.reason) {
       toast({
         title: "Error",
         description: "Please fill in all required fields",
         variant: "destructive",
       })
+      console.warn("AdminDashboardPage: Balance update failed - missing required fields.")
       return
     }
     const dataStore = DataStore.getInstance()
     const user = dataStore.getUserById(balanceUpdateData.userId)
-    if (!user) return
+    if (!user) {
+      console.error(`AdminDashboardPage: User ${balanceUpdateData.userId} not found for balance update.`)
+      return
+    }
 
     let newBalance = 0
     const currentBalance = balanceUpdateData.accountType === "checking" ? user.checkingBalance : user.savingsBalance
@@ -207,7 +225,6 @@ export default function AdminDashboardPage() {
 
     const updatedUser = await dataStore.updateUser(balanceUpdateData.userId, updateData)
     if (updatedUser) {
-      // Create transaction record
       await dataStore.createTransaction({
         userId: balanceUpdateData.userId,
         type: balanceUpdateData.action === "subtract" ? "debit" : "credit",
@@ -216,7 +233,7 @@ export default function AdminDashboardPage() {
         category: "Admin Action",
         fromAccount: balanceUpdateData.accountType,
       })
-      await loadData() // Reload data after update
+      await loadData()
       setIsBalanceDialogOpen(false)
       setBalanceUpdateData({
         userId: "",
@@ -229,10 +246,14 @@ export default function AdminDashboardPage() {
         title: "Balance Updated",
         description: `${balanceUpdateData.accountType} balance ${balanceUpdateData.action}ed successfully`,
       })
+      console.log(`AdminDashboardPage: Balance updated for user ${balanceUpdateData.userId}.`)
+    } else {
+      console.error(`AdminDashboardPage: Failed to update balance for user ${balanceUpdateData.userId}.`)
     }
   }
 
   const handleTransfer = async () => {
+    console.log("AdminDashboardPage: Handling transfer.")
     if (
       !transferData.fromUserId ||
       !transferData.toUserId ||
@@ -245,6 +266,7 @@ export default function AdminDashboardPage() {
         description: "Please fill in all fields correctly",
         variant: "destructive",
       })
+      console.warn("AdminDashboardPage: Transfer failed - missing or invalid fields.")
       return
     }
 
@@ -252,7 +274,10 @@ export default function AdminDashboardPage() {
     const fromUser = dataStore.getUserById(transferData.fromUserId)
     const toUser = dataStore.getUserById(transferData.toUserId)
 
-    if (!fromUser || !toUser) return
+    if (!fromUser || !toUser) {
+      console.error("AdminDashboardPage: Source or destination user not found for transfer.")
+      return
+    }
 
     const fromBalance = transferData.fromAccount === "checking" ? fromUser.checkingBalance : fromUser.savingsBalance
     const toBalance = transferData.toAccount === "checking" ? toUser.checkingBalance : toUser.savingsBalance
@@ -263,10 +288,10 @@ export default function AdminDashboardPage() {
         description: "The source account doesn't have enough funds",
         variant: "destructive",
       })
+      console.warn("AdminDashboardPage: Transfer failed - insufficient funds.")
       return
     }
 
-    // Update from user balance
     const fromUpdateData: Partial<User> = {}
     if (transferData.fromAccount === "checking") {
       fromUpdateData.checkingBalance = fromBalance - transferData.amount
@@ -280,7 +305,6 @@ export default function AdminDashboardPage() {
       }
     }
 
-    // Update to user balance
     const toUpdateData: Partial<User> = {}
     if (transferData.toAccount === "checking") {
       toUpdateData.checkingBalance = toBalance + transferData.amount
@@ -297,7 +321,6 @@ export default function AdminDashboardPage() {
     await dataStore.updateUser(transferData.fromUserId, fromUpdateData)
     await dataStore.updateUser(transferData.toUserId, toUpdateData)
 
-    // Create transaction records
     await dataStore.createTransaction({
       userId: transferData.fromUserId,
       type: "debit",
@@ -316,7 +339,7 @@ export default function AdminDashboardPage() {
       fromAccount: transferData.toAccount,
     })
 
-    await loadData() // Reload data after update
+    await loadData()
     setIsTransferDialogOpen(false)
     setTransferData({
       fromUserId: "",
@@ -330,36 +353,43 @@ export default function AdminDashboardPage() {
       title: "Transfer Completed",
       description: `Successfully transferred $${transferData.amount.toFixed(2)}`,
     })
+    console.log(`AdminDashboardPage: Transfer completed for $${transferData.amount.toFixed(2)}.`)
   }
 
   const handleEditUser = async () => {
-    if (!selectedUser || !editUserData) return
+    console.log("AdminDashboardPage: Handling user edit.")
+    if (!selectedUser || !editUserData) {
+      console.warn("AdminDashboardPage: Edit user failed - no user selected or no data to edit.")
+      return
+    }
     const dataStore = DataStore.getInstance()
     const updatedUser = await dataStore.updateUser(selectedUser.id, editUserData)
     if (updatedUser) {
-      await loadData() // Reload data after update
+      await loadData()
       setIsEditUserDialogOpen(false)
       setEditUserData({})
       toast({
         title: "User Updated",
         description: "User information has been updated successfully",
       })
+      console.log(`AdminDashboardPage: User ${selectedUser.id} updated successfully.`)
+    } else {
+      console.error(`AdminDashboardPage: Failed to update user ${selectedUser.id}.`)
     }
   }
 
   const handleLogout = () => {
-    // Show toast notification first
+    console.log("AdminDashboardPage: Logging out admin.")
     toast({
       title: "Logged out",
       description: "Admin session ended",
     })
 
-    // Clear authentication tokens
     localStorage.removeItem("isAdminAuthenticated")
     localStorage.removeItem("currentAdminId")
 
-    // Redirect to admin login page and replace history entry
     window.location.replace("/admin")
+    console.log("AdminDashboardPage: Redirected to /admin after logout.")
   }
 
   const formatCurrency = (amount: number) => {
@@ -801,108 +831,116 @@ export default function AdminDashboardPage() {
                   </tr>
                 </thead>
                 <tbody className="bg-white divide-y divide-gray-200">
-                  {filteredUsers.map((user) => (
-                    <tr key={user.id} className="hover:bg-gray-50">
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="min-w-0">
-                          <p className="font-medium text-gray-900 truncate">
-                            {user.firstName} {user.lastName}
-                          </p>
-                          <p className="text-sm text-gray-600 truncate">{user.email}</p>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <p className="font-mono text-sm text-gray-800">****{user.accountNumber.slice(-4)}</p>
-                        <p className="text-xs text-gray-500 flex items-center">
-                          <Calendar className="h-3 w-3 mr-1" />
-                          {formatDate(user.createdAt)}
-                        </p>
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="text-sm text-gray-800">
-                          <p>Checking: {formatCurrency(user.checkingBalance)}</p>
-                          <p className="text-green-600">Available: {formatCurrency(user.availableCheckingBalance)}</p>
-                          <p className="text-gray-600">Savings: {formatCurrency(user.savingsBalance)}</p>
-                        </div>
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <Badge className={getStatusColor(user.accountStatus)}>{user.accountStatus}</Badge>
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <Badge className={getVerificationColor(user.verificationStatus)}>
-                          {user.verificationStatus.replace("_", " ")}
-                        </Badge>
-                      </td>
-                      <td className="py-3 px-4 text-sm text-gray-600 whitespace-nowrap">
-                        {formatDate(user.createdAt)}
-                      </td>
-                      <td className="py-3 px-4 whitespace-nowrap">
-                        <div className="flex flex-wrap gap-2">
-                          <Button size="sm" variant="outline" onClick={() => setSelectedUser(user)}>
-                            <Eye className="h-3 w-3" />
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => {
-                              setSelectedUser(user)
-                              setEditUserData({
-                                firstName: user.firstName,
-                                lastName: user.lastName,
-                                email: user.email,
-                                phone: user.phone,
-                                address: user.address,
-                                city: user.city,
-                                state: user.state,
-                                zipCode: user.zipCode,
-                              })
-                              setIsEditUserDialogOpen(true)
-                            }}
-                          >
-                            <Edit className="h-3 w-3" />
-                          </Button>
-                          {user.accountStatus === "pending" && (
-                            <Button
-                              size="sm"
-                              onClick={() => updateUserStatus(user.id, "verified")}
-                              className="bg-green-600 hover:bg-green-700"
-                            >
-                              Verify
-                            </Button>
-                          )}
-                          {(user.accountStatus === "verified" || user.accountStatus === "pending") && (
-                            <Button
-                              size="sm"
-                              variant="destructive"
-                              onClick={() => updateUserStatus(user.id, "suspended")}
-                            >
-                              Suspend
-                            </Button>
-                          )}
-                          {(user.accountStatus === "verified" || user.accountStatus === "pending") && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="bg-purple-600 hover:bg-purple-700 text-white"
-                              onClick={() => updateUserStatus(user.id, "locked")}
-                            >
-                              <Lock className="h-3 w-3" />
-                            </Button>
-                          )}
-                          {user.accountStatus === "locked" && (
-                            <Button
-                              size="sm"
-                              variant="outline"
-                              className="bg-blue-600 hover:bg-blue-700 text-white"
-                              onClick={() => updateUserStatus(user.id, "verified")}
-                            >
-                              <Unlock className="h-3 w-3" />
-                            </Button>
-                          )}
-                        </div>
+                  {filteredUsers.length === 0 ? (
+                    <tr>
+                      <td colSpan={7} className="py-8 text-center text-gray-500">
+                        No users found. Please create users through the application's signup page.
                       </td>
                     </tr>
-                  ))}
+                  ) : (
+                    filteredUsers.map((user) => (
+                      <tr key={user.id} className="hover:bg-gray-50">
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="min-w-0">
+                            <p className="font-medium text-gray-900 truncate">
+                              {user.firstName} {user.lastName}
+                            </p>
+                            <p className="text-sm text-gray-600 truncate">{user.email}</p>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <p className="font-mono text-sm text-gray-800">****{user.accountNumber.slice(-4)}</p>
+                          <p className="text-xs text-gray-500 flex items-center">
+                            <Calendar className="h-3 w-3 mr-1" />
+                            {formatDate(user.createdAt)}
+                          </p>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="text-sm text-gray-800">
+                            <p>Checking: {formatCurrency(user.checkingBalance)}</p>
+                            <p className="text-green-600">Available: {formatCurrency(user.availableCheckingBalance)}</p>
+                            <p className="text-gray-600">Savings: {formatCurrency(user.savingsBalance)}</p>
+                          </div>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <Badge className={getStatusColor(user.accountStatus)}>{user.accountStatus}</Badge>
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <Badge className={getVerificationColor(user.verificationStatus)}>
+                            {user.verificationStatus.replace("_", " ")}
+                          </Badge>
+                        </td>
+                        <td className="py-3 px-4 text-sm text-gray-600 whitespace-nowrap">
+                          {formatDate(user.createdAt)}
+                        </td>
+                        <td className="py-3 px-4 whitespace-nowrap">
+                          <div className="flex flex-wrap gap-2">
+                            <Button size="sm" variant="outline" onClick={() => setSelectedUser(user)}>
+                              <Eye className="h-3 w-3" />
+                            </Button>
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              onClick={() => {
+                                setSelectedUser(user)
+                                setEditUserData({
+                                  firstName: user.firstName,
+                                  lastName: user.lastName,
+                                  email: user.email,
+                                  phone: user.phone,
+                                  address: user.address,
+                                  city: user.city,
+                                  state: user.state,
+                                  zipCode: user.zipCode,
+                                })
+                                setIsEditUserDialogOpen(true)
+                              }}
+                            >
+                              <Edit className="h-3 w-3" />
+                            </Button>
+                            {user.accountStatus === "pending" && (
+                              <Button
+                                size="sm"
+                                onClick={() => updateUserStatus(user.id, "verified")}
+                                className="bg-green-600 hover:bg-green-700"
+                              >
+                                Verify
+                              </Button>
+                            )}
+                            {(user.accountStatus === "verified" || user.accountStatus === "pending") && (
+                              <Button
+                                size="sm"
+                                variant="destructive"
+                                onClick={() => updateUserStatus(user.id, "suspended")}
+                              >
+                                Suspend
+                              </Button>
+                            )}
+                            {(user.accountStatus === "verified" || user.accountStatus === "pending") && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="bg-purple-600 hover:bg-purple-700 text-white"
+                                onClick={() => updateUserStatus(user.id, "locked")}
+                              >
+                                <Lock className="h-3 w-3" />
+                              </Button>
+                            )}
+                            {user.accountStatus === "locked" && (
+                              <Button
+                                size="sm"
+                                variant="outline"
+                                className="bg-blue-600 hover:bg-blue-700 text-white"
+                                onClick={() => updateUserStatus(user.id, "verified")}
+                              >
+                                <Unlock className="h-3 w-3" />
+                              </Button>
+                            )}
+                          </div>
+                        </td>
+                      </tr>
+                    ))
+                  )}
                 </tbody>
               </table>
             </div>
