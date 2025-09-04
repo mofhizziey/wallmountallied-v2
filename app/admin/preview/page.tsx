@@ -79,36 +79,11 @@ export default function DashboardPage() {
 
         setUserData(user)
 
-        // Load transactions from API
+        // Load transactions from API - ONLY real data, no dummy transactions
         const userTransactions = await dataStore.getTransactionsByUserId(currentUserId)
         const formattedTransactions = dataStore.formatTransactionsForDashboard(userTransactions)
         
         setTransactions(formattedTransactions)
-
-        // If no transactions exist, create some sample ones for demo
-        if (formattedTransactions.length === 0) {
-          const sampleTransactions = [
-            {
-              id: 'sample-1',
-              type: 'credit' as const,
-              description: 'Welcome Bonus',
-              amount: 100.00,
-              date: new Date().toLocaleDateString(),
-              category: 'bonus',
-              status: 'completed'
-            },
-            {
-              id: 'sample-2',
-              type: 'debit' as const,
-              description: 'ATM Withdrawal',
-              amount: 50.00,
-              date: new Date(Date.now() - 86400000).toLocaleDateString(), // Yesterday
-              category: 'cash',
-              status: 'completed'
-            }
-          ]
-          setTransactions(sampleTransactions)
-        }
 
       } catch (error) {
         console.error('Error loading dashboard data:', error)
@@ -121,8 +96,8 @@ export default function DashboardPage() {
     loadUserData()
   }, [router, toast])
 
-  // Helper function to create sample transactions (for testing)
-  const createSampleTransaction = async (type: 'deposit' | 'withdrawal', amount: number, description: string) => {
+  // Helper function to create transactions (for testing purposes only)
+  const createTransaction = async (type: 'deposit' | 'withdrawal', amount: number, description: string) => {
     const currentUserId = localStorage.getItem("currentUserId")
     if (!currentUserId) return
 
@@ -141,13 +116,24 @@ export default function DashboardPage() {
       const formattedTransactions = dataStore.formatTransactionsForDashboard(userTransactions)
       setTransactions(formattedTransactions)
       
-      // Update user balance if needed
+      // Update user balance
       if (userData && result.newBalance !== undefined) {
         setUserData({
           ...userData,
           checkingBalance: result.newBalance
         })
       }
+
+      toast({
+        title: "Transaction Created",
+        description: `${type === 'deposit' ? 'Deposit' : 'Withdrawal'} of ${amount} completed successfully.`,
+      })
+    } else {
+      toast({
+        title: "Transaction Failed",
+        description: result.error || "Failed to create transaction",
+        variant: "destructive",
+      })
     }
   }
 
@@ -329,7 +315,35 @@ export default function DashboardPage() {
           </CardContent>
         </Card>
 
-        {/* Recent Transactions */}
+        {/* Demo Transaction Creation (for testing) - Remove in production */}
+        <Card className="border-dashed border-gray-300">
+          <CardHeader>
+            <CardTitle className="text-sm">Demo Actions (Testing Only)</CardTitle>
+            <CardDescription className="text-xs">Create sample transactions for testing</CardDescription>
+          </CardHeader>
+          <CardContent>
+            <div className="flex space-x-2">
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => createTransaction('deposit', 100, 'Test Deposit')}
+                disabled={isAccountRestricted}
+              >
+                Add $100 Deposit
+              </Button>
+              <Button 
+                size="sm" 
+                variant="outline" 
+                onClick={() => createTransaction('withdrawal', 25, 'Test Withdrawal')}
+                disabled={isAccountRestricted || checkingBalance < 25}
+              >
+                Add $25 Withdrawal
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+
+        {/* Recent Transactions - Only Real Data */}
         <Card>
           <CardHeader>
             <CardTitle>Recent Transactions</CardTitle>

@@ -1,0 +1,11 @@
+[
+  {
+    "id": "admin-1",
+    "username": "admin",
+    "password": "$2b$12$m8.gsNxFEJQcVp7yFwu3vOl0dc75GLne8T1qYOQBzc.tvTmU6w.5u",
+    "role": "super_admin",
+    "createdAt": "2025-09-04T03:24:13.301Z",
+    "lastLogin": "2025-09-04T05:28:41.944Z",
+    "isActive": true
+  }
+]

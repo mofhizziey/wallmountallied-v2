@@ -1,1053 +1,656 @@
-"use client"
-
-// Clean JSON data structure for the banking application
+// lib/data-store.ts
 export interface User {
-  id: string
-  firstName: string
-  lastName: string
-  email: string
-  phone: string
-  dateOfBirth: string
-  ssn: string
-  address: string
-  city: string
-  state: string
-  zipCode: string
-  password: string
-  pin: string
-  accountNumber: string
-  checkingBalance: number
-  savingsBalance: number
-  availableCheckingBalance: number
-  availableSavingsBalance: number
-  accountStatus: "pending" | "verified" | "suspended" | "locked" | "closed"
-  verificationStatus: "pending" | "selfie_required" | "documents_required" | "verified" | "rejected"
-  selfieUrl?: string
-  licenseUrl?: string
-  licenseNumber?: string
-  licenseState?: string
-  createdAt: string
-  lastLogin?: string
-  kycCompleted: boolean
-  lockReason?: string
-  suspensionReason?: string
-  loginAttempts: number
-  lastLoginAttempt?: string
-  profilePicture?: string
-  occupation?: string
-  monthlyIncome?: number
-  creditScore?: number
-  accountLimits: {
-    dailyTransferLimit: number
-    monthlyTransferLimit: number
-    dailyWithdrawalLimit: number
-  }
-  preferences: {
-    notifications: boolean
-    emailUpdates: boolean
-    twoFactorAuth: boolean
-  }
-  securityQuestions?: {
-    question1: string
-    answer1: string
-    question2: string
-    answer2: string
-  }
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  ssn: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  licenseNumber: string;
+  licenseState: string;
+  licenseUrl: string | null;
+  accountNumber: string;
+  checkingBalance: number;
+  savingsBalance: number;
+  availableCheckingBalance?: number;
+  availableSavingsBalance?: number;
+  createdAt: string;
+  lastLogin: string | null;
+  isActive: boolean;
+  accountStatus?: string;
+  verificationStatus?: string;
+  kycCompleted?: boolean;
+  loginAttempts?: number;
+  lockReason?: string;
+  suspensionReason?: string;
+  occupation?: string;
+  monthlyIncome?: number;
+  idFrontUrl?: string;
+  idBackUrl?: string;
+  selfieUrl?: string;
+}
+
+export interface AuthResult {
+  success: boolean;
+  user?: User;
+  error?: string;
+}
+
+export interface CreateUserData {
+  firstName: string;
+  lastName: string;
+  email: string;
+  phone: string;
+  dateOfBirth: string;
+  ssn: string;
+  address: string;
+  city: string;
+  state: string;
+  zipCode: string;
+  password: string;
+  pin: string;
+  licenseNumber: string;
+  licenseState: string;
+  licenseUrl: string | null;
+  accountNumber: string;
+  checkingBalance: number;
+  savingsBalance: number;
 }
 
 export interface Transaction {
-  id: string
-  userId: string
-  type: "credit" | "debit"
-  amount: number
-  description: string
-  category: string
-  fromAccount: "checking" | "savings"
-  toAccount?: string
-  status: "pending" | "completed" | "failed" | "cancelled"
-  date: string
-  fee?: number
-  balanceAfter?: number
-  location?: string
-  merchantCategory?: string
+  id: string;
+  userId: string;
+  type: 'credit' | 'debit' | 'deposit' | 'withdrawal' | 'transfer' | 'payment';
+  amount: number;
+  description: string;
+  date: string;
+  category: string;
+  status: string;
+  fromAccount?: string;
+  toAccount?: string;
 }
 
-export interface Bill {
-  id: string
-  userId: string
-  payeeName: string
-  payeeType: "utility" | "credit_card" | "loan" | "subscription" | "other"
-  accountNumber: string
-  amount: number
-  dueDate: string
-  isPaid: boolean
-  isRecurring: boolean
-  frequency?: "monthly" | "quarterly" | "annually"
-  category: string
-  autopay: boolean
-  createdAt: string
-  lastPaid?: string
-  notes?: string
-}
-
-export interface AdminUser {
-  id: string
-  username: string
-  password: string
-  role: "admin" | "super_admin"
-  permissions: string[]
-  createdAt: string
-  lastLogin?: string
-  loginAttempts: number
-}
-
-export interface BankData {
-  users: User[]
-  transactions: Transaction[]
-  bills: Bill[]
-  admins: AdminUser[]
-  settings: {
-    requireSelfieVerification: boolean
-    minimumAge: number
-    maxDailyTransferLimit: number
-    maxLoginAttempts: number
-    accountLockoutDuration: number
-    maintenanceMode: boolean
-  }
-  version: string
-  lastUpdated: string
-  metadata: {
-    totalLogins: number
-    totalSignups: number
-    lastBackup: string
-    totalTransactionVolume: number
-    averageAccountBalance: number
-  }
-}
-
-// Storage keys
-const STORAGE_KEYS = {
-  BANK_DATA: "securebank_data",
-  BACKUP_DATA: "securebank_backup",
-  VERSION: "securebank_version",
-  METADATA: "securebank_metadata",
-}
-
-// Current data version for migration purposes
-const CURRENT_VERSION = "2.0.0"
-
-// Initialize default data structure
-const defaultBankData: BankData = {
-  users: [],
-  transactions: [],
-  bills: [],
-  admins: [
-    {
-      id: "admin-1",
-      username: "admin",
-      password: "admin123",
-      role: "super_admin",
-      permissions: ["view_users", "edit_users", "manage_accounts", "view_transactions", "system_admin"],
-      createdAt: new Date().toISOString(),
-      loginAttempts: 0,
-    },
-  ],
-  settings: {
-    requireSelfieVerification: true,
-    minimumAge: 18,
-    maxDailyTransferLimit: 10000,
-    maxLoginAttempts: 5,
-    accountLockoutDuration: 30, // minutes
-    maintenanceMode: false,
-  },
-  version: CURRENT_VERSION,
-  lastUpdated: new Date().toISOString(),
-  metadata: {
-    totalLogins: 0,
-    totalSignups: 0,
-    lastBackup: new Date().toISOString(),
-    totalTransactionVolume: 0,
-    averageAccountBalance: 0,
-  },
+export interface UserFilters {
+  status: string;
+  verification: string;
+  balanceRange: { min: number; max: number };
+  dateRange: { start: string; end: string };
+  hasTransactions: boolean | null;
 }
 
 export class DataStore {
-  private static instance: DataStore
-  private data: BankData
-  private isInitialized = false
-  private saveQueue: Promise<void> = Promise.resolve()
+  private static instance: DataStore;
+  private baseUrl: string;
 
   private constructor() {
-    this.data = { ...defaultBankData }
-    this.initializeStore()
+    this.baseUrl = typeof window !== 'undefined' ? window.location.origin : '';
   }
 
-  static getInstance(): DataStore {
+  public static getInstance(): DataStore {
     if (!DataStore.instance) {
-      DataStore.instance = new DataStore()
+      DataStore.instance = new DataStore();
     }
-    return DataStore.instance
+    return DataStore.instance;
   }
 
-  private initializeStore(): void {
-    if (typeof window === "undefined") {
-      this.isInitialized = true
-      return
-    }
-
+  // Create a new user account
+  async createUser(userData: CreateUserData): Promise<AuthResult> {
     try {
-      this.loadData()
-      this.isInitialized = true
-      this.setupPeriodicOperations()
+      const response = await fetch(`${this.baseUrl}/api/users`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData),
+      });
 
-      window.addEventListener("storage", this.handleStorageChange.bind(this))
-      window.addEventListener("beforeunload", () => {
-        this.saveDataSync()
-        this.exportToJSON()
-      })
+      const data = await response.json();
 
-      console.log("DataStore initialized successfully")
-    } catch (error) {
-      console.error("Failed to initialize DataStore:", error)
-      this.handleStorageError()
-    }
-  }
-
-  private loadData(): void {
-    if (typeof window === "undefined") return
-
-    try {
-      const stored = localStorage.getItem(STORAGE_KEYS.BANK_DATA)
-
-      if (stored) {
-        const parsedData = JSON.parse(stored) as BankData
-
-        if (this.validateDataStructure(parsedData)) {
-          this.data = parsedData
-
-          if (parsedData.version !== CURRENT_VERSION) {
-            this.migrateData(parsedData)
-          }
-        } else {
-          console.warn("Invalid data structure, attempting JSON recovery")
-          this.loadFromJSONBackup()
-        }
-      } else {
-        this.loadFromJSONBackup()
-      }
-    } catch (error) {
-      console.error("Error loading data:", error)
-      this.handleStorageError()
-    }
-  }
-
-  private loadFromJSONBackup(): void {
-    try {
-      const backup = localStorage.getItem(STORAGE_KEYS.BACKUP_DATA)
-      if (backup) {
-        const backupData = JSON.parse(backup) as BankData
-        if (this.validateDataStructure(backupData)) {
-          this.data = backupData
-          console.log("Loaded from JSON backup")
-          return
-        }
-      }
-
-      this.data = { ...defaultBankData }
-      this.saveData()
-      console.log("Initialized with default data")
-    } catch (error) {
-      console.error("Error loading from JSON backup:", error)
-      this.data = { ...defaultBankData }
-    }
-  }
-
-  private validateDataStructure(data: any): boolean {
-    return (
-      data &&
-      typeof data === "object" &&
-      Array.isArray(data.users) &&
-      Array.isArray(data.transactions) &&
-      Array.isArray(data.admins) &&
-      data.settings &&
-      typeof data.settings === "object" &&
-      data.version &&
-      data.lastUpdated
-    )
-  }
-
-  private migrateData(oldData: BankData): void {
-    console.log(`Migrating data from version ${oldData.version} to ${CURRENT_VERSION}`)
-
-    // Migration logic for new fields
-    const migratedUsers = oldData.users.map((user) => ({
-      ...user,
-      lockReason: user.lockReason || undefined,
-      suspensionReason: user.suspensionReason || undefined,
-      loginAttempts: user.loginAttempts || 0,
-      occupation: user.occupation || undefined,
-      monthlyIncome: user.monthlyIncome || undefined,
-      creditScore: user.creditScore || undefined,
-      accountLimits: user.accountLimits || {
-        dailyTransferLimit: 5000,
-        monthlyTransferLimit: 50000,
-        dailyWithdrawalLimit: 1000,
-      },
-      preferences: user.preferences || {
-        notifications: true,
-        emailUpdates: true,
-        twoFactorAuth: false,
-      },
-    }))
-
-    this.data = {
-      ...oldData,
-      users: migratedUsers,
-      bills: oldData.bills || [],
-      version: CURRENT_VERSION,
-      lastUpdated: new Date().toISOString(),
-      metadata: {
-        ...defaultBankData.metadata,
-        ...oldData.metadata,
-      },
-      settings: {
-        ...defaultBankData.settings,
-        ...oldData.settings,
-      },
-    }
-
-    this.saveData()
-  }
-
-  private async saveData(): Promise<void> {
-    this.saveQueue = this.saveQueue.then(() => this.performSave())
-    return this.saveQueue
-  }
-
-  private async performSave(): Promise<void> {
-    if (typeof window === "undefined" || !this.isInitialized) return
-
-    try {
-      this.data.lastUpdated = new Date().toISOString()
-      const dataToSave = JSON.stringify(this.data)
-
-      localStorage.setItem(STORAGE_KEYS.BANK_DATA, dataToSave)
-      localStorage.setItem(STORAGE_KEYS.BACKUP_DATA, dataToSave)
-      localStorage.setItem(STORAGE_KEYS.VERSION, CURRENT_VERSION)
-      localStorage.setItem(STORAGE_KEYS.METADATA, JSON.stringify(this.data.metadata))
-
-      await this.exportToJSON()
-    } catch (error) {
-      console.error("Error saving data:", error)
-      this.handleStorageError()
-    }
-  }
-
-  private saveDataSync(): void {
-    if (typeof window === "undefined" || !this.isInitialized) return
-
-    try {
-      this.data.lastUpdated = new Date().toISOString()
-      const dataToSave = JSON.stringify(this.data)
-
-      localStorage.setItem(STORAGE_KEYS.BANK_DATA, dataToSave)
-      localStorage.setItem(STORAGE_KEYS.BACKUP_DATA, dataToSave)
-    } catch (error) {
-      console.error("Error saving data synchronously:", error)
-    }
-  }
-
-  private async exportToJSON(): Promise<void> {
-    try {
-      const jsonData = JSON.stringify(this.data, null, 2)
-      const blob = new Blob([jsonData], { type: "application/json" })
-      const url = URL.createObjectURL(blob)
-
-      sessionStorage.setItem("data_export_url", url)
-      this.data.metadata.lastBackup = new Date().toISOString()
-      console.log("Data exported to JSON successfully")
-    } catch (error) {
-      console.error("Error exporting to JSON:", error)
-    }
-  }
-
-  private handleStorageError(): void {
-    console.warn("Storage error detected, attempting recovery...")
-
-    try {
-      const backup = localStorage.getItem(STORAGE_KEYS.BACKUP_DATA)
-      if (backup) {
-        const backupData = JSON.parse(backup) as BankData
-        if (this.validateDataStructure(backupData)) {
-          this.data = backupData
-          console.log("Successfully recovered from backup")
-          return
-        }
-      }
-    } catch (error) {
-      console.error("Backup recovery failed:", error)
-    }
-
-    this.data = { ...defaultBankData }
-    console.log("Using default data due to storage errors")
-  }
-
-  private handleStorageChange(event: StorageEvent): void {
-    if (event.key === STORAGE_KEYS.BANK_DATA && event.newValue) {
-      try {
-        const newData = JSON.parse(event.newValue) as BankData
-        if (this.validateDataStructure(newData)) {
-          this.data = newData
-          console.log("Data synchronized from another tab")
-        }
-      } catch (error) {
-        console.error("Error synchronizing data from another tab:", error)
-      }
-    }
-  }
-
-  private setupPeriodicOperations(): void {
-    setInterval(
-      () => {
-        try {
-          this.saveDataSync()
-          this.exportToJSON()
-          this.updateMetadata()
-        } catch (error) {
-          console.error("Periodic operations failed:", error)
-        }
-      },
-      2 * 60 * 1000,
-    )
-  }
-
-  private updateMetadata(): void {
-    const totalVolume = this.data.transactions.reduce((sum, txn) => sum + txn.amount, 0)
-    const totalBalance = this.data.users.reduce((sum, user) => sum + user.checkingBalance + user.savingsBalance, 0)
-    const avgBalance = this.data.users.length > 0 ? totalBalance / this.data.users.length : 0
-
-    this.data.metadata.totalTransactionVolume = totalVolume
-    this.data.metadata.averageAccountBalance = avgBalance
-  }
-
-  // Enhanced authentication with account status checks
-  async authenticateUser(email: string, password: string): Promise<{ success: boolean; user?: User; error?: string }> {
-    try {
-      if (this.data.settings.maintenanceMode) {
-        return { success: false, error: "System is currently under maintenance. Please try again later." }
-      }
-
-      const user = this.data.users.find((u) => u.email.toLowerCase() === email.toLowerCase())
-
-      if (!user) {
-        return { success: false, error: "No account found with this email address" }
-      }
-
-      // Check if account is locked
-      if (user.accountStatus === "locked") {
+      if (!response.ok) {
         return {
           success: false,
-          error: `Your account has been locked. ${user.lockReason || "Please contact support for assistance."}`,
-        }
+          error: data.error || 'Failed to create account'
+        };
       }
 
-      // Check if account is suspended
-      if (user.accountStatus === "suspended") {
+      return {
+        success: true,
+        user: data.user
+      };
+    } catch (error) {
+      console.error('Error creating user:', error);
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.'
+      };
+    }
+  }
+
+  // Authenticate user credentials (first step)
+  async authenticateUser(email: string, password: string): Promise<AuthResult> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/auth/login`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          email,
+          password,
+          step: 'credentials'
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
         return {
           success: false,
-          error: `Your account has been suspended. ${user.suspensionReason || "Please contact support for assistance."}`,
-        }
+          error: data.error || 'Authentication failed'
+        };
       }
 
-      // Check if account is closed
-      if (user.accountStatus === "closed") {
-        return { success: false, error: "Your account has been closed. Please contact support." }
-      }
-
-      // Check login attempts
-      if (user.loginAttempts >= this.data.settings.maxLoginAttempts) {
-        const lockUser = await this.lockUserAccount(user.id, "Too many failed login attempts")
-        if (lockUser) {
-          return {
-            success: false,
-            error: "Account locked due to too many failed login attempts. Please contact support.",
-          }
-        }
-      }
-
-      if (user.password !== password) {
-        // Increment login attempts
-        await this.updateUser(user.id, {
-          loginAttempts: user.loginAttempts + 1,
-          lastLoginAttempt: new Date().toISOString(),
-        })
-        return { success: false, error: "Incorrect password. Please try again." }
-      }
-
-      // Reset login attempts on successful authentication
-      await this.updateUser(user.id, {
-        loginAttempts: 0,
-        lastLoginAttempt: new Date().toISOString(),
-      })
-
-      this.data.metadata.totalLogins++
-      await this.saveData()
-
-      return { success: true, user }
+      return {
+        success: true,
+        user: data.user
+      };
     } catch (error) {
-      console.error("Authentication error:", error)
-      return { success: false, error: "An unexpected error occurred. Please try again." }
+      console.error('Error authenticating user:', error);
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.'
+      };
     }
   }
 
-  async validatePin(userId: string, pin: string): Promise<{ success: boolean; error?: string }> {
+  // Validate PIN (second step)
+  async validatePin(userId: string, pin: string): Promise<AuthResult> {
     try {
-      const user = this.data.users.find((u) => u.id === userId)
+      const response = await fetch(`${this.baseUrl}/api/auth/validate-pin`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          userId,
+          pin
+        }),
+      });
 
-      if (!user) {
-        return { success: false, error: "User not found" }
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'PIN validation failed'
+        };
       }
 
-      // Double-check account status
-      if (["locked", "suspended", "closed"].includes(user.accountStatus)) {
-        return { success: false, error: "Account access restricted" }
-      }
-
-      if (user.pin !== pin) {
-        return { success: false, error: "Incorrect PIN. Please try again." }
-      }
-
-      // Update last login
-      user.lastLogin = new Date().toISOString()
-      await this.saveData()
-
-      return { success: true }
+      return {
+        success: true,
+        user: data.user
+      };
     } catch (error) {
-      console.error("PIN validation error:", error)
-      return { success: false, error: "An unexpected error occurred. Please try again." }
+      console.error('Error validating PIN:', error);
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.'
+      };
     }
   }
 
-  // Enhanced user creation
-  async createUser(
-    userData: Omit<
-      User,
-      | "id"
-      | "createdAt"
-      | "accountStatus"
-      | "verificationStatus"
-      | "kycCompleted"
-      | "availableCheckingBalance"
-      | "availableSavingsBalance"
-      | "loginAttempts"
-      | "accountLimits"
-      | "preferences"
-    >,
-  ): Promise<{ success: boolean; user?: User; error?: string }> {
+  // Get user by ID
+  async getUserById(userId: string): Promise<AuthResult> {
     try {
-      const existingUser = this.data.users.find((u) => u.email.toLowerCase() === userData.email.toLowerCase())
-      if (existingUser) {
-        return { success: false, error: "An account with this email address already exists" }
+      const response = await fetch(`${this.baseUrl}/api/users?id=${userId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'User not found'
+        };
       }
 
-      if (!userData.email || !userData.password || !userData.firstName || !userData.lastName) {
-        return { success: false, error: "Please fill in all required fields" }
-      }
-
-      const emailRegex = /^[^\s@]+@[^\s@]+\.[^\s@]+$/
-      if (!emailRegex.test(userData.email)) {
-        return { success: false, error: "Please enter a valid email address" }
-      }
-
-      if (userData.password.length < 6) {
-        return { success: false, error: "Password must be at least 6 characters long" }
-      }
-
-      if (!/^\d{4}$/.test(userData.pin)) {
-        return { success: false, error: "PIN must be exactly 4 digits" }
-      }
-
-      const user: User = {
-        ...userData,
-        id: `user-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        accountStatus: "pending",
-        verificationStatus: "documents_required",
-        kycCompleted: false,
-        availableCheckingBalance: 0,
-        availableSavingsBalance: 0,
-        createdAt: new Date().toISOString(),
-        loginAttempts: 0,
-        accountLimits: {
-          dailyTransferLimit: 5000,
-          monthlyTransferLimit: 50000,
-          dailyWithdrawalLimit: 1000,
-        },
-        preferences: {
-          notifications: true,
-          emailUpdates: true,
-          twoFactorAuth: false,
-        },
-      }
-
-      this.data.users.push(user)
-      this.data.metadata.totalSignups++
-      await this.saveData()
-
-      console.log(`User created: ${user.email}`)
-      return { success: true, user }
+      return {
+        success: true,
+        user: data.user
+      };
     } catch (error) {
-      console.error("Error creating user:", error)
-      return { success: false, error: "Failed to create account. Please try again." }
+      console.error('Error fetching user:', error);
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.'
+      };
     }
   }
 
-  // Account management methods
-  async lockUserAccount(userId: string, reason: string): Promise<User | undefined> {
-    const user = await this.updateUser(userId, {
-      accountStatus: "locked",
+  // Get user by email
+  async getUserByEmail(email: string): Promise<AuthResult> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/users?email=${encodeURIComponent(email)}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'User not found'
+        };
+      }
+
+      return {
+        success: true,
+        user: data.user
+      };
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.'
+      };
+    }
+  }
+
+  // NEW: Get all users for admin
+  async getAllUsersAPI(): Promise<User[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/admin/users/`);
+      const data = await response.json();
+      console.log("Data: ", data)
+
+      if (!response.ok) {
+        console.error('Failed to fetch all users:', data.error);
+        return [];
+      }
+
+      return data.users || [];
+    } catch (error) {
+      console.error('Error fetching all users:', error);
+      return [];
+    }
+  }
+
+  // NEW: Get all transactions for admin
+  async getAllTransactionsAPI(): Promise<Transaction[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/admin/transactions/`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to fetch all transactions:', data.error);
+        return [];
+      }
+
+      return data.transactions || [];
+    } catch (error) {
+      console.error('Error fetching all transactions:', error);
+      return [];
+    }
+  }
+
+  // NEW: Get user by ID for admin (with more detailed data)
+  async getUserByIdAPI(userId: string): Promise<User | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/admin/users?id=${userId}/`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to fetch user:', data.error);
+        return null;
+      }
+
+      return data.user || null;
+    } catch (error) {
+      console.error('Error fetching user:', error);
+      return null;
+    }
+  }
+
+  // NEW: Search users with filters
+  async searchUsersAPI(searchTerm: string, filters: UserFilters): Promise<User[]> {
+    try {
+      const queryParams = new URLSearchParams();
+      if (searchTerm) queryParams.append('search', searchTerm);
+      if (filters.status !== 'all') queryParams.append('status', filters.status);
+      if (filters.verification !== 'all') queryParams.append('verification', filters.verification);
+      
+      const response = await fetch(`${this.baseUrl}/api/admin/users/search?${queryParams}/`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to search users:', data.error);
+        return [];
+      }
+
+      return data.users || [];
+    } catch (error) {
+      console.error('Error searching users:', error);
+      return [];
+    }
+  }
+
+  // NEW: Update user
+  async updateUser(userId: string, updateData: Partial<User>): Promise<User | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/admin/users/${userId}/`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to update user:', data.error);
+        return null;
+      }
+
+      return data.user || null;
+    } catch (error) {
+      console.error('Error updating user:', error);
+      return null;
+    }
+  }
+
+  // NEW: Lock user account
+  async lockUserAccount(userId: string, reason: string): Promise<User | null> {
+    return this.updateUser(userId, {
+      accountStatus: 'locked',
       lockReason: reason,
-    })
-    return user
+    });
   }
 
-  async unlockUserAccount(userId: string): Promise<User | undefined> {
-    const user = await this.updateUser(userId, {
-      accountStatus: "verified",
+  // NEW: Unlock user account
+  async unlockUserAccount(userId: string): Promise<User | null> {
+    return this.updateUser(userId, {
+      accountStatus: 'verified',
       lockReason: undefined,
-      loginAttempts: 0,
-    })
-    return user
+    });
   }
 
-  async suspendUserAccount(userId: string, reason: string): Promise<User | undefined> {
-    const user = await this.updateUser(userId, {
-      accountStatus: "suspended",
+  // NEW: Suspend user account
+  async suspendUserAccount(userId: string, reason: string): Promise<User | null> {
+    return this.updateUser(userId, {
+      accountStatus: 'suspended',
       suspensionReason: reason,
-    })
-    return user
+    });
   }
 
-  async closeUserAccount(userId: string): Promise<User | undefined> {
-    const user = await this.updateUser(userId, {
-      accountStatus: "closed",
-    })
-    return user
+  // NEW: Close user account
+  async closeUserAccount(userId: string): Promise<User | null> {
+    return this.updateUser(userId, {
+      accountStatus: 'closed',
+      isActive: false,
+    });
   }
 
-  // Enhanced user filtering and search
-  searchUsers(
-    query: string,
-    filters: {
-      status?: string
-      verification?: string
-      balanceRange?: { min: number; max: number }
-      dateRange?: { start: string; end: string }
-      hasTransactions?: boolean
-    } = {},
-  ): User[] {
-    let users = [...this.data.users]
-
-    // Text search
-    if (query) {
-      const lowerQuery = query.toLowerCase()
-      users = users.filter(
-        (user) =>
-          user.firstName.toLowerCase().includes(lowerQuery) ||
-          user.lastName.toLowerCase().includes(lowerQuery) ||
-          user.email.toLowerCase().includes(lowerQuery) ||
-          user.accountNumber.includes(query) ||
-          user.phone.includes(query),
-      )
-    }
-
-    // Status filter
-    if (filters.status && filters.status !== "all") {
-      users = users.filter((user) => user.accountStatus === filters.status)
-    }
-
-    // Verification filter
-    if (filters.verification && filters.verification !== "all") {
-      users = users.filter((user) => user.verificationStatus === filters.verification)
-    }
-
-    // Balance range filter
-    if (filters.balanceRange) {
-      users = users.filter((user) => {
-        const totalBalance = user.checkingBalance + user.savingsBalance
-        return totalBalance >= filters.balanceRange!.min && totalBalance <= filters.balanceRange!.max
-      })
-    }
-
-    // Date range filter
-    if (filters.dateRange) {
-      users = users.filter((user) => {
-        const createdDate = new Date(user.createdAt)
-        const startDate = new Date(filters.dateRange!.start)
-        const endDate = new Date(filters.dateRange!.end)
-        return createdDate >= startDate && createdDate <= endDate
-      })
-    }
-
-    // Has transactions filter
-    if (filters.hasTransactions !== undefined) {
-      const userTransactions = this.data.transactions
-      users = users.filter((user) => {
-        const hasTransactions = userTransactions.some((txn) => txn.userId === user.id)
-        return filters.hasTransactions ? hasTransactions : !hasTransactions
-      })
-    }
-
-    return users
+  // NEW: Get user by ID (sync version for compatibility)
+  getUserByIdSync(userId: string): User | null {
+    // This is a fallback - in reality, we'd need to make this async
+    // For now, return null to indicate not found
+    console.warn('getUserByIdSync called - this should be replaced with async version');
+    return null;
   }
 
-  // Bill management
-  async createBill(billData: Omit<Bill, "id" | "createdAt">): Promise<Bill> {
-    const bill: Bill = {
-      ...billData,
-      id: `bill-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      createdAt: new Date().toISOString(),
-    }
-
-    this.data.bills.push(bill)
-    await this.saveData()
-    return bill
-  }
-
-  async updateBill(billId: string, updates: Partial<Bill>): Promise<Bill | undefined> {
-    const billIndex = this.data.bills.findIndex((bill) => bill.id === billId)
-    if (billIndex !== -1) {
-      this.data.bills[billIndex] = { ...this.data.bills[billIndex], ...updates }
-      await this.saveData()
-      return this.data.bills[billIndex]
-    }
-    return undefined
-  }
-
-  async deleteBill(billId: string): Promise<boolean> {
-    const billIndex = this.data.bills.findIndex((bill) => bill.id === billId)
-    if (billIndex !== -1) {
-      this.data.bills.splice(billIndex, 1)
-      await this.saveData()
-      return true
-    }
-    return false
-  }
-
-  getBillsByUserId(userId: string): Bill[] {
-    return this.data.bills.filter((bill) => bill.userId === userId)
-  }
-
-  getAllBills(): Bill[] {
-    return [...this.data.bills]
-  }
-
-  // Enhanced transaction methods
-  async createTransaction(transactionData: Omit<Transaction, "id" | "date" | "status">): Promise<Transaction> {
+  // NEW: Export data for admin
+  async exportDataAPI(): Promise<string> {
     try {
-      const user = this.getUserById(transactionData.userId)
-      const balanceAfter = user
-        ? transactionData.fromAccount === "checking"
-          ? user.checkingBalance
-          : user.savingsBalance
-        : 0
+      const response = await fetch(`${this.baseUrl}/api/admin/export`);
+      const data = await response.json();
 
-      const transaction: Transaction = {
-        ...transactionData,
-        id: `txn-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-        status: "completed",
-        date: new Date().toISOString(),
-        balanceAfter,
-        location: "Online Banking",
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to export data');
       }
 
-      this.data.transactions.push(transaction)
-      await this.saveData()
-
-      console.log(`Transaction created: ${transaction.id}`)
-      return transaction
+      return JSON.stringify(data.data, null, 2);
     } catch (error) {
-      console.error("Error creating transaction:", error)
-      throw new Error("Failed to create transaction")
+      console.error('Error exporting data:', error);
+      throw error;
     }
   }
 
-  getTransactionsByUserId(
-    userId: string,
-    filters?: {
-      type?: "credit" | "debit"
-      category?: string
-      dateRange?: { start: string; end: string }
-      amountRange?: { min: number; max: number }
-    },
-  ): Transaction[] {
-    let transactions = this.data.transactions.filter((txn) => txn.userId === userId)
-
-    if (filters) {
-      if (filters.type) {
-        transactions = transactions.filter((txn) => txn.type === filters.type)
-      }
-      if (filters.category) {
-        transactions = transactions.filter((txn) => txn.category === filters.category)
-      }
-      if (filters.dateRange) {
-        transactions = transactions.filter((txn) => {
-          const txnDate = new Date(txn.date)
-          const startDate = new Date(filters.dateRange!.start)
-          const endDate = new Date(filters.dateRange!.end)
-          return txnDate >= startDate && txnDate <= endDate
-        })
-      }
-      if (filters.amountRange) {
-        transactions = transactions.filter(
-          (txn) => txn.amount >= filters.amountRange!.min && txn.amount <= filters.amountRange!.max,
-        )
-      }
-    }
-
-    return transactions.sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
+  // Check if user is authenticated (client-side helper)
+  isAuthenticated(): boolean {
+    if (typeof window === 'undefined') return false;
+    
+    const isAuth = localStorage.getItem('isAuthenticated');
+    const userId = localStorage.getItem('currentUserId');
+    
+    return isAuth === 'true' && userId !== null;
   }
 
-  // Analytics methods
-  getUserAnalytics(userId: string) {
-    const user = this.getUserById(userId)
-    if (!user) return null
+  // Get current user ID (client-side helper)
+  getCurrentUserId(): string | null {
+    if (typeof window === 'undefined') return null;
+    
+    return localStorage.getItem('currentUserId');
+  }
 
-    const transactions = this.getTransactionsByUserId(userId)
-    const bills = this.getBillsByUserId(userId)
+  // Sign out user (client-side helper)
+  signOut(): void {
+    if (typeof window === 'undefined') return;
+    
+    localStorage.removeItem('isAuthenticated');
+    localStorage.removeItem('currentUserId');
+  }
 
-    const monthlySpending = transactions.filter((txn) => txn.type === "debit").reduce((sum, txn) => sum + txn.amount, 0)
+  // Debug methods for development
+  async getDataStats(): Promise<any> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/debug?action=stats`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error('Failed to get stats:', data.error);
+        return null;
+      }
 
-    const monthlyIncome = transactions.filter((txn) => txn.type === "credit").reduce((sum, txn) => sum + txn.amount, 0)
+      return data.stats;
+    } catch (error) {
+      console.error('Error fetching debug stats:', error);
+      return null;
+    }
+  }
 
-    const categorySpending = transactions
-      .filter((txn) => txn.type === "debit")
-      .reduce(
-        (acc, txn) => {
-          acc[txn.category] = (acc[txn.category] || 0) + txn.amount
-          return acc
+  async exportData(): Promise<string> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/debug?action=export`);
+      const data = await response.json();
+      
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to export data');
+      }
+
+      return JSON.stringify(data.data, null, 2);
+    } catch (error) {
+      console.error('Error exporting data:', error);
+      throw error;
+    }
+  }
+
+  async clearAllData(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/debug`, {
+        method: 'DELETE',
+        headers: {
+          'x-debug-mode': 'true'
+        }
+      });
+      
+      const data = await response.json();
+      
+      if (!response.ok) {
+        console.error('Failed to clear data:', data.error);
+        return false;
+      }
+
+      // Clear local session data as well
+      this.signOut();
+      
+      return true;
+    } catch (error) {
+      console.error('Error clearing data:', error);
+      return false;
+    }
+  }
+
+  // Transaction management methods
+  async getTransactionsByUserId(userId: string): Promise<any[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/transactions?userId=${userId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to fetch transactions:', data.error);
+        return [];
+      }
+
+      return data.transactions || [];
+    } catch (error) {
+      console.error('Error fetching transactions:', error);
+      return [];
+    }
+  }
+
+  async createTransaction(transactionData: {
+    userId: string;
+    type: 'deposit' | 'withdrawal' | 'transfer' | 'payment' | 'credit' | 'debit';
+    amount: number;
+    description?: string;
+    category?: string;
+    fromAccount?: string;
+    toAccount?: string;
+  }): Promise<{ success: boolean; transaction?: any; newBalance?: number; error?: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/transactions/`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
         },
-        {} as Record<string, number>,
-      )
+        body: JSON.stringify(transactionData),
+      });
 
-    return {
-      totalBalance: user.checkingBalance + user.savingsBalance,
-      availableBalance: user.availableCheckingBalance + user.availableSavingsBalance,
-      monthlySpending,
-      monthlyIncome,
-      transactionCount: transactions.length,
-      billCount: bills.length,
-      categorySpending,
-      averageTransaction:
-        transactions.length > 0 ? transactions.reduce((sum, txn) => sum + txn.amount, 0) / transactions.length : 0,
-    }
-  }
+      const data = await response.json();
 
-  getSystemAnalytics() {
-    const totalUsers = this.data.users.length
-    const activeUsers = this.data.users.filter(
-      (u) => u.lastLogin && new Date(u.lastLogin).getTime() > Date.now() - 30 * 24 * 60 * 60 * 1000,
-    ).length
-
-    const totalTransactions = this.data.transactions.length
-    const totalVolume = this.data.transactions.reduce((sum, txn) => sum + txn.amount, 0)
-    const totalDeposits = this.data.users.reduce((sum, user) => sum + user.checkingBalance + user.savingsBalance, 0)
-
-    const statusBreakdown = this.data.users.reduce(
-      (acc, user) => {
-        acc[user.accountStatus] = (acc[user.accountStatus] || 0) + 1
-        return acc
-      },
-      {} as Record<string, number>,
-    )
-
-    return {
-      totalUsers,
-      activeUsers,
-      totalTransactions,
-      totalVolume,
-      totalDeposits,
-      statusBreakdown,
-      averageBalance: this.data.metadata.averageAccountBalance,
-      signupRate: this.data.metadata.totalSignups,
-      loginRate: this.data.metadata.totalLogins,
-    }
-  }
-
-  // Existing methods remain the same
-  getUserByEmail(email: string): User | undefined {
-    try {
-      return this.data.users.find((user) => user.email.toLowerCase() === email.toLowerCase())
-    } catch (error) {
-      console.error("Error getting user by email:", error)
-      return undefined
-    }
-  }
-
-  getUserById(id: string): User | undefined {
-    try {
-      return this.data.users.find((user) => user.id === id)
-    } catch (error) {
-      console.error("Error getting user by ID:", error)
-      return undefined
-    }
-  }
-
-  async updateUser(id: string, updates: Partial<User>): Promise<User | undefined> {
-    try {
-      const userIndex = this.data.users.findIndex((user) => user.id === id)
-      if (userIndex !== -1) {
-        this.data.users[userIndex] = { ...this.data.users[userIndex], ...updates }
-        await this.saveData()
-
-        console.log(`User updated: ${id}`)
-        return this.data.users[userIndex]
-      }
-      return undefined
-    } catch (error) {
-      console.error("Error updating user:", error)
-      return undefined
-    }
-  }
-
-  getAllUsers(): User[] {
-    try {
-      return [...this.data.users]
-    } catch (error) {
-      console.error("Error getting all users:", error)
-      return []
-    }
-  }
-
-  async deleteUser(id: string): Promise<boolean> {
-    try {
-      const userIndex = this.data.users.findIndex((user) => user.id === id)
-      if (userIndex !== -1) {
-        this.data.users.splice(userIndex, 1)
-        this.data.transactions = this.data.transactions.filter((txn) => txn.userId !== id)
-        this.data.bills = this.data.bills.filter((bill) => bill.userId !== id)
-        await this.saveData()
-
-        console.log(`User deleted: ${id}`)
-        return true
-      }
-      return false
-    } catch (error) {
-      console.error("Error deleting user:", error)
-      return false
-    }
-  }
-
-  getAdminByUsername(username: string): AdminUser | undefined {
-    try {
-      return this.data.admins.find((admin) => admin.username.toLowerCase() === username.toLowerCase())
-    } catch (error) {
-      console.error("Error getting admin by username:", error)
-      return undefined
-    }
-  }
-
-  getAllTransactions(): Transaction[] {
-    try {
-      return [...this.data.transactions]
-    } catch (error) {
-      console.error("Error getting all transactions:", error)
-      return []
-    }
-  }
-
-  getSettings() {
-    try {
-      return { ...this.data.settings }
-    } catch (error) {
-      console.error("Error getting settings:", error)
-      return defaultBankData.settings
-    }
-  }
-
-  async updateSettings(settings: Partial<BankData["settings"]>): Promise<void> {
-    try {
-      this.data.settings = { ...this.data.settings, ...settings }
-      await this.saveData()
-      console.log("Settings updated")
-    } catch (error) {
-      console.error("Error updating settings:", error)
-    }
-  }
-
-  exportData(): string {
-    try {
-      return JSON.stringify(this.data, null, 2)
-    } catch (error) {
-      console.error("Error exporting data:", error)
-      return "{}"
-    }
-  }
-
-  async importData(jsonData: string): Promise<boolean> {
-    try {
-      const importedData = JSON.parse(jsonData) as BankData
-
-      if (this.validateDataStructure(importedData)) {
-        this.data = importedData
-        await this.saveData()
-        console.log("Data imported successfully")
-        return true
-      } else {
-        console.error("Invalid data structure for import")
-        return false
-      }
-    } catch (error) {
-      console.error("Error importing data:", error)
-      return false
-    }
-  }
-
-  async clearAllData(): Promise<void> {
-    try {
-      if (typeof window !== "undefined") {
-        localStorage.removeItem(STORAGE_KEYS.BANK_DATA)
-        localStorage.removeItem(STORAGE_KEYS.BACKUP_DATA)
-        localStorage.removeItem(STORAGE_KEYS.VERSION)
-        localStorage.removeItem(STORAGE_KEYS.METADATA)
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'Failed to create transaction'
+        };
       }
 
-      this.data = { ...defaultBankData }
-      await this.saveData()
-
-      console.log("All data cleared")
-    } catch (error) {
-      console.error("Error clearing data:", error)
-    }
-  }
-
-  getDataStats() {
-    try {
       return {
-        totalUsers: this.data.users.length,
-        totalTransactions: this.data.transactions.length,
-        totalBills: this.data.bills.length,
-        totalAdmins: this.data.admins.length,
-        totalLogins: this.data.metadata.totalLogins,
-        totalSignups: this.data.metadata.totalSignups,
-        version: this.data.version,
-        lastUpdated: this.data.lastUpdated,
-        lastBackup: this.data.metadata.lastBackup,
-        storageSize: typeof window !== "undefined" ? localStorage.getItem(STORAGE_KEYS.BANK_DATA)?.length || 0 : 0,
-      }
+        success: true,
+        transaction: data.transaction,
+        newBalance: data.newBalance
+      };
     } catch (error) {
-      console.error("Error getting data stats:", error)
+      console.error('Error creating transaction:', error);
       return {
-        totalUsers: 0,
-        totalTransactions: 0,
-        totalBills: 0,
-        totalAdmins: 0,
-        totalLogins: 0,
-        totalSignups: 0,
-        version: CURRENT_VERSION,
-        lastUpdated: new Date().toISOString(),
-        lastBackup: new Date().toISOString(),
-        storageSize: 0,
-      }
+        success: false,
+        error: 'Network error. Please check your connection and try again.'
+      };
     }
+  }
+
+  // Helper method to format transactions for the dashboard
+  formatTransactionsForDashboard(transactions: any[]): any[] {
+    return transactions.map((txn) => ({
+      id: txn.id,
+      type: txn.type === 'deposit' ? 'credit' : 'debit',
+      description: txn.description || `${txn.type.charAt(0).toUpperCase() + txn.type.slice(1)}`,
+      amount: txn.amount,
+      date: new Date(txn.date).toLocaleDateString(),
+      category: txn.category || 'general',
+      status: txn.status || 'completed'
+    }));
+  }
+
+  // Admin authentication methods
+  async authenticateAdmin(username: string, password: string): Promise<{ success: boolean; admin?: any; error?: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/admin/auth`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({ username, password }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'Authentication failed'
+        };
+      }
+
+      return {
+        success: true,
+        admin: data.admin
+      };
+    } catch (error) {
+      console.error('Error authenticating admin:', error);
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.'
+      };
+    }
+  }
+
+  async getAdminById(adminId: string): Promise<{ success: boolean; admin?: any; error?: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/admin/auth?id=${adminId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'Admin not found'
+        };
+      }
+
+      return {
+        success: true,
+        admin: data.admin
+      };
+    } catch (error) {
+      console.error('Error fetching admin:', error);
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.'
+      };
+    }
+  }
+
+  // Admin session helpers
+  isAdminAuthenticated(): boolean {
+    if (typeof window === 'undefined') return false;
+    
+    const isAuth = localStorage.getItem('isAdminAuthenticated');
+    const adminId = localStorage.getItem('currentAdminId');
+    
+    return isAuth === 'true' && adminId !== null;
+  }
+
+  getCurrentAdminId(): string | null {
+    if (typeof window === 'undefined') return null;
+    
+    return localStorage.getItem('currentAdminId');
+  }
+
+  signOutAdmin(): void {
+    if (typeof window === 'undefined') return;
+    
+    localStorage.removeItem('isAdminAuthenticated');
+    localStorage.removeItem('currentAdminId');
   }
 }
