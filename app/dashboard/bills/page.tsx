@@ -68,7 +68,7 @@ export default function BillsPage() {
 
     setUserData(user)
     // Fetch bills from DataStore for the current user
-    const userBills = dataStore.getBillsByUserId(currentUserId)
+    const userBills = dataStore?.getBillsByUserId(currentUserId)
     setBills(userBills)
   }, [router, toast])
 

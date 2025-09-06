@@ -24,18 +24,24 @@ async function readAdmins() {
     return JSON.parse(data);
   } catch (error) {
     // If file doesn't exist, create default admin
-    const defaultAdmin = {
-      id: 'admin-1',
-      username: 'admin',
-      password: await bcrypt.hash('admin123', 12),
-      role: 'super_admin',
-      createdAt: new Date().toISOString(),
-      lastLogin: null,
-      isActive: true
-    };
+    const defaultAdmins = [
+      {
+        id: 'admin-1',
+        username: 'admin',
+        password: await bcrypt.hash('admin123', 12), // Default password
+        firstName: 'System',
+        lastName: 'Administrator',
+        email: 'admin@bankapp.com',
+        role: 'super_admin',
+        createdAt: new Date().toISOString(),
+        lastLogin: null,
+        isActive: true
+      }
+    ];
     
-    await writeAdmins([defaultAdmin]);
-    return [defaultAdmin];
+    await ensureDataDirectory();
+    await fs.writeFile(ADMINS_FILE, JSON.stringify(defaultAdmins, null, 2));
+    return defaultAdmins;
   }
 }
 
@@ -58,7 +64,7 @@ export async function POST(request: NextRequest) {
     }
 
     const admins = await readAdmins();
-    const admin = admins.find((a: any) => a.username === username);
+    const admin = admins.find((a: any) => a.username === username && a.isActive);
 
     if (!admin) {
       return NextResponse.json(
@@ -67,16 +73,8 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!admin.isActive) {
-      return NextResponse.json(
-        { success: false, error: 'Admin account is deactivated' },
-        { status: 403 }
-      );
-    }
-
-    // Verify password
+    // Check password
     const isValidPassword = await bcrypt.compare(password, admin.password);
-    
     if (!isValidPassword) {
       return NextResponse.json(
         { success: false, error: 'Invalid credentials' },
@@ -85,12 +83,11 @@ export async function POST(request: NextRequest) {
     }
 
     // Update last login
-    const adminIndex = admins.findIndex((a: any) => a.id === admin.id);
-    admins[adminIndex].lastLogin = new Date().toISOString();
+    admin.lastLogin = new Date().toISOString();
     await writeAdmins(admins);
 
-    // Return admin without password
-    const { password: _, ...safeAdmin } = admins[adminIndex];
+    // Return admin data without password
+    const { password: _, ...safeAdmin } = admin;
 
     return NextResponse.json({
       success: true,
@@ -98,7 +95,7 @@ export async function POST(request: NextRequest) {
     });
 
   } catch (error) {
-    console.error('Error during admin authentication:', error);
+    console.error('Error authenticating admin:', error);
     return NextResponse.json(
       { success: false, error: 'Authentication failed' },
       { status: 500 }
@@ -129,7 +126,7 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    // Return admin without password
+    // Return admin data without password
     const { password, ...safeAdmin } = admin;
 
     return NextResponse.json({

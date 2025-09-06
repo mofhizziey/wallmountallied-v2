@@ -176,7 +176,7 @@ export default function AccountsPage() {
                     <div>
                       <p className="text-sm text-gray-600">Account Number</p>
                       <p className="font-mono text-sm">
-                        {showAccountNumbers ? account.accountNumber : `****${account.accountNumber.slice(-4)}`}
+                        {showAccountNumbers ? account.accountNumber : `****${account.accountNumber?.slice(-4)}`}
                       </p>
                     </div>
                     <Button variant="ghost" size="sm" onClick={() => copyToClipboard(account.accountNumber)}>

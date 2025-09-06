@@ -50,7 +50,7 @@ export default function AdminLoginPage() {
 
       // Small delay for better UX
       setTimeout(() => {
-        router.push("/admin/dashboard")
+        router.push("/admin/dashboard/")
       }, 1500)
 
     } catch (error) {
