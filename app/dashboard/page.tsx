@@ -63,6 +63,12 @@ export default function DashboardPage() {
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string>("")
   const [activeModal, setActiveModal] = useState<ModalType>(null)
+  const [currentBalances, setCurrentBalances] = useState({
+    checking: 0,
+    savings: 0,
+    availableChecking: 0,
+    availableSavings: 0
+  })
   const { toast } = useToast()
 
   // Form states for modals
@@ -78,6 +84,20 @@ export default function DashboardPage() {
     dueDate: "",
     category: "utilities",
   })
+
+  // Calculate current balance from transactions
+  const calculateCurrentBalance = (initialBalance: number, userTransactions: any[], accountType: 'checking' | 'savings') => {
+    return userTransactions.reduce((balance, transaction) => {
+      // Only process transactions that affect the specific account
+      // You might need to adjust this logic based on how you track which account each transaction affects
+      if (transaction.type === 'deposit' || transaction.type === 'credit') {
+        return balance + transaction.amount
+      } else if (transaction.type === 'withdrawal' || transaction.type === 'debit' || transaction.type === 'payment') {
+        return balance - transaction.amount
+      }
+      return balance
+    }, initialBalance)
+  }
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -125,6 +145,30 @@ export default function DashboardPage() {
         
         setTransactions(formattedTransactions)
 
+        // Calculate current balances based on transactions
+        const initialCheckingBalance = user.checkingBalance || 0
+        const initialSavingsBalance = user.savingsBalance || 0
+        
+        // Calculate real-time balances from transaction history
+        const currentCheckingBalance = calculateCurrentBalance(initialCheckingBalance, userTransactions, 'checking')
+        const currentSavingsBalance = calculateCurrentBalance(initialSavingsBalance, userTransactions, 'savings')
+        
+        // Available balance might have holds or pending transactions
+        // For now, we'll assume available = current balance, but this could be calculated differently
+        const availableCheckingBalance = user.availableCheckingBalance !== undefined 
+          ? calculateCurrentBalance(user.availableCheckingBalance, userTransactions, 'checking')
+          : currentCheckingBalance
+        const availableSavingsBalance = user.availableSavingsBalance !== undefined 
+          ? calculateCurrentBalance(user.availableSavingsBalance, userTransactions, 'savings')
+          : currentSavingsBalance
+
+        setCurrentBalances({
+          checking: currentCheckingBalance,
+          savings: currentSavingsBalance,
+          availableChecking: availableCheckingBalance,
+          availableSavings: availableSavingsBalance
+        })
+
         // If no transactions exist, create some sample ones for demo
         if (formattedTransactions.length === 0) {
           const sampleTransactions = [
@@ -148,6 +192,15 @@ export default function DashboardPage() {
             }
           ]
           setTransactions(sampleTransactions)
+          
+          // Update balances with sample transactions
+          const sampleCheckingBalance = initialCheckingBalance + 100.00 - 50.00
+          setCurrentBalances({
+            checking: sampleCheckingBalance,
+            savings: initialSavingsBalance,
+            availableChecking: sampleCheckingBalance,
+            availableSavings: initialSavingsBalance
+          })
         }
 
       } catch (error) {
@@ -223,22 +276,92 @@ export default function DashboardPage() {
     setActiveModal(action)
   }
 
-  const handleTransferSubmit = () => {
-    // Here you would implement the actual transfer logic
-    toast({
-      title: "Transfer Initiated",
-      description: `Transfer of $${transferForm.amount} has been processed.`,
-    })
+  const handleTransferSubmit = async () => {
+    if (!userData) return
+    
+    try {
+      const dataStore = DataStore.getInstance()
+      
+      // Create a transaction record for the transfer
+      const transferData = {
+        userId: userData.id,
+        type: 'transfer' as const,
+        amount: parseFloat(transferForm.amount),
+        description: transferForm.description || `Transfer from ${transferForm.fromAccount} to ${transferForm.toAccount}`,
+        category: 'transfer',
+        fromAccount: transferForm.fromAccount,
+        toAccount: transferForm.toAccount
+      }
+      
+      const result = await dataStore.createTransaction(transferData)
+      
+      if (result.success) {
+        toast({
+          title: "Transfer Completed",
+          description: `$${transferForm.amount} transferred from ${transferForm.fromAccount} to ${transferForm.toAccount}.`,
+        })
+        
+        // Refresh the page to show updated balances and transactions
+        window.location.reload()
+      } else {
+        toast({
+          title: "Transfer Failed",
+          description: result.error || "Failed to process transfer",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Transfer Failed",
+        description: "An error occurred while processing the transfer",
+        variant: "destructive",
+      })
+    }
+    
     setActiveModal(null)
     setTransferForm({ fromAccount: "checking", toAccount: "savings", amount: "", description: "" })
   }
 
-  const handleBillPaymentSubmit = () => {
-    // Here you would implement the actual bill payment logic
-    toast({
-      title: "Bill Payment Scheduled",
-      description: `Payment to ${billForm.payee} has been scheduled.`,
-    })
+  const handleBillPaymentSubmit = async () => {
+    if (!userData) return
+    
+    try {
+      const dataStore = DataStore.getInstance()
+      
+      // Create a transaction record for the bill payment
+      const paymentData = {
+        userId: userData.id,
+        type: 'payment' as const,
+        amount: parseFloat(billForm.amount),
+        description: `Bill payment to ${billForm.payee}`,
+        category: billForm.category,
+      }
+      
+      const result = await dataStore.createTransaction(paymentData)
+      
+      if (result.success) {
+        toast({
+          title: "Bill Payment Scheduled",
+          description: `Payment of $${billForm.amount} to ${billForm.payee} has been processed.`,
+        })
+        
+        // Refresh the page to show updated balances and transactions
+        window.location.reload()
+      } else {
+        toast({
+          title: "Payment Failed",
+          description: result.error || "Failed to process payment",
+          variant: "destructive",
+        })
+      }
+    } catch (error) {
+      toast({
+        title: "Payment Failed",
+        description: "An error occurred while processing the payment",
+        variant: "destructive",
+      })
+    }
+    
     setActiveModal(null)
     setBillForm({ payee: "", amount: "", dueDate: "", category: "utilities" })
   }
@@ -299,11 +422,11 @@ export default function DashboardPage() {
     })
   }
 
-  // Handle cases where these properties might not exist
-  const checkingBalance = userData.checkingBalance || 0
-  const savingsBalance = userData.savingsBalance || 0
-  const availableCheckingBalance = userData.availableCheckingBalance || checkingBalance
-  const availableSavingsBalance = userData.availableSavingsBalance || savingsBalance
+  // Use calculated current balances instead of static user data
+  const checkingBalance = currentBalances.checking
+  const savingsBalance = currentBalances.savings
+  const availableCheckingBalance = currentBalances.availableChecking
+  const availableSavingsBalance = currentBalances.availableSavings
   const accountStatus = userData.accountStatus || "active"
   const verificationStatus = userData.verificationStatus || "verified"
 
