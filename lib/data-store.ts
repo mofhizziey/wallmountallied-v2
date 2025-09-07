@@ -273,7 +273,7 @@ export class DataStore {
   // NEW: Get all users for admin
   async getAllUsersAPI(): Promise<User[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/admin/users/`);
+      const response = await fetch(`${this.baseUrl}/api/admin/users`);
       const data = await response.json();
       console.log("Data: ", data)
 
@@ -292,7 +292,7 @@ export class DataStore {
   // NEW: Get all transactions for admin
   async getAllTransactionsAPI(): Promise<Transaction[]> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/admin/transactions/`);
+      const response = await fetch(`${this.baseUrl}/api/admin/transactions`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -310,7 +310,7 @@ export class DataStore {
   // NEW: Get user by ID for admin (with more detailed data)
   async getUserByIdAPI(userId: string): Promise<User | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/admin/users?id=${userId}/`);
+      const response = await fetch(`${this.baseUrl}/api/admin/users?id=${userId}`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -333,7 +333,7 @@ export class DataStore {
       if (filters.status !== 'all') queryParams.append('status', filters.status);
       if (filters.verification !== 'all') queryParams.append('verification', filters.verification);
       
-      const response = await fetch(`${this.baseUrl}/api/admin/users/search?${queryParams}/`);
+      const response = await fetch(`${this.baseUrl}/api/admin/users/search?${queryParams}`);
       const data = await response.json();
 
       if (!response.ok) {
@@ -348,11 +348,11 @@ export class DataStore {
     }
   }
 
-  // NEW: Update user
+  // NEW: Update user - FIXED: Changed from PUT to PATCH
   async updateUser(userId: string, updateData: Partial<User>): Promise<User | null> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/admin/users/${userId}/`, {
-        method: 'PUT',
+      const response = await fetch(`${this.baseUrl}/api/admin/users/${userId}`, {
+        method: 'PATCH', // Changed from PUT to PATCH
         headers: {
           'Content-Type': 'application/json',
         },
@@ -543,7 +543,7 @@ export class DataStore {
     toAccount?: string;
   }): Promise<{ success: boolean; transaction?: any; newBalance?: number; error?: string }> {
     try {
-      const response = await fetch(`${this.baseUrl}/api/transactions/`, {
+      const response = await fetch(`${this.baseUrl}/api/transactions`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
