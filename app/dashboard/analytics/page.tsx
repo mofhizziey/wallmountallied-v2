@@ -101,7 +101,7 @@ export default function AnalyticsPage() {
 
   const processedSpendingCategories = useMemo(() => {
     const categoryAmounts: { [key: string]: number } = {}
-    transactions.forEach((txn) => {
+    transactions?.forEach((txn) => {
       if (txn.type === "debit") {
         categoryAmounts[txn.category] = (categoryAmounts[txn.category] || 0) + txn.amount
       }
@@ -121,7 +121,7 @@ export default function AnalyticsPage() {
         }
       })
       .sort((a, b) => b.amount - a.amount)
-  }, [transactions])
+  }, [])
 
   const processedMonthlyTrends = useMemo(() => {
     const trendsMap: { [key: string]: { income: number; expenses: number } } = {}

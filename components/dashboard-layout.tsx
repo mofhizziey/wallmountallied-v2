@@ -53,7 +53,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: "Accounts", href: "/dashboard/accounts", icon: CreditCard },
     { name: "Transfer", href: "/dashboard/transfer", icon: ArrowLeftRight },
     { name: "Bills", href: "/dashboard/bills", icon: Receipt },
-    { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
+   //{ name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
     { name: "Settings", href: "/settings", icon: Settings },
   ]
 
