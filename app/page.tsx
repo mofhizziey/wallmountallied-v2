@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button"
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card"
 import { Input } from "@/components/ui/input"
 import { Menu, X, Landmark, ShieldCheck, Lock, Fingerprint, CheckCircle, ArrowRight, Phone } from "lucide-react"
+import SupportHelpline from "@/components/SupportHelpLine"
 
 const transitionProps = { duration: 0.6, ease: [0.42, 0, 0.58, 1] }
 const viewportProps = { once: true, amount: 0.3 }
@@ -35,6 +36,7 @@ export default function LandingPage() {
   ]
 
   return (
+ <>
     <div className="min-h-screen">
       {/* Navbar */}
       <nav className="fixed top-0 w-full bg-white/95 backdrop-blur-sm border-b border-gray-200 z-50">
@@ -695,5 +697,7 @@ export default function LandingPage() {
         </div>
       </footer>
     </div>
+    <SupportHelpline/>
+ </>
   )
 }

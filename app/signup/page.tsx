@@ -27,6 +27,11 @@ export default function SignupPage() {
   const [licensePreview, setLicensePreview] = useState<string | null>(null)
   const [isLoading, setIsLoading] = useState(false)
   const [error, setError] = useState<string>("")
+  const [emailStatus, setEmailStatus] = useState<{
+    welcomeEmailSent: boolean;
+    adminNotificationSent: boolean;
+    errors: string[];
+  } | null>(null)
   const [formData, setFormData] = useState({
     firstName: "",
     lastName: "",
@@ -85,7 +90,7 @@ export default function SignupPage() {
     }
 
     // Phone validation
-    const phoneRegex = /^\+?[\d\s\-$$$$]{10,}$/
+    const phoneRegex = /^\+?[\d\s\-()]{10,}$/
     if (!phoneRegex.test(formData.phone)) {
       return "Please enter a valid phone number"
     }
@@ -132,9 +137,65 @@ export default function SignupPage() {
     }
   }
 
+  const sendWelcomeEmails = async (userData: {
+    firstName: string;
+    lastName: string;
+    email: string;
+    accountNumber: string;
+  }) => {
+    try {
+      console.log('Calling email API...')
+      
+      const response = await fetch('/api/send-welcome-email', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(userData),
+      })
+
+      const result = await response.json()
+      
+      if (response.ok && result.success) {
+        setEmailStatus({
+          welcomeEmailSent: result.welcomeEmailSent,
+          adminNotificationSent: result.adminNotificationSent,
+          errors: result.errors || []
+        })
+        
+        if (result.welcomeEmailSent) {
+          toast({
+            title: "Welcome Email Sent!",
+            description: "Check your email for account details and next steps.",
+          })
+        }
+        
+        return result
+      } else {
+        throw new Error(result.error || 'API call failed')
+      }
+      
+    } catch (error) {
+      console.error('Error calling email API:', error)
+      
+      setEmailStatus({
+        welcomeEmailSent: false,
+        adminNotificationSent: false,
+        errors: [`API Error: ${error instanceof Error ? error.message : 'Unknown error'}`]
+      })
+      
+      return {
+        welcomeEmailSent: false,
+        adminNotificationSent: false,
+        errors: [`API Error: ${error instanceof Error ? error.message : 'Unknown error'}`]
+      }
+    }
+  }
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault()
     setError("")
+    setEmailStatus(null)
 
     // Validate form
     const validationError = validateForm()
@@ -146,10 +207,13 @@ export default function SignupPage() {
     setIsLoading(true)
 
     try {
+      const accountNumber = generateAccountNumber()
       const dataStore = DataStore.getInstance()
+      
+      // Create user account
       const result = await dataStore.createUser({
         ...formData,
-        accountNumber: generateAccountNumber(),
+        accountNumber,
         checkingBalance: 0.0,
         savingsBalance: 0.0,
         licenseUrl: licensePreview,
@@ -161,21 +225,38 @@ export default function SignupPage() {
         return
       }
 
+      // Set authentication
       localStorage.setItem("currentUserId", result.user!.id)
       localStorage.setItem("isAuthenticated", "true")
 
+      // Show success message
       toast({
         title: "Account Created Successfully!",
         description: `Welcome to SecureBank, ${result.user!.firstName}!`,
       })
 
-      // Simulate account setup time
+      // Send welcome emails via API (non-blocking)
+      const userData = {
+        firstName: result.user!.firstName,
+        lastName: result.user!.lastName,
+        email: result.user!.email,
+        accountNumber: result.user!.accountNumber,
+      }
+      
+      // Send emails in background - don't wait for completion
+      sendWelcomeEmails(userData).catch(error => {
+        console.error('Background email sending failed:', error)
+      })
+
+      // Simulate account setup time and redirect
       setTimeout(() => {
         router.push("/dashboard")
       }, 3000)
+
     } catch (error) {
       console.error("Signup error:", error)
       setError("An unexpected error occurred. Please try again.")
+    } finally {
       setIsLoading(false)
     }
   }
@@ -213,6 +294,25 @@ export default function SignupPage() {
                   onDismiss={() => setError("")}
                   showContactSupport={error.includes("unexpected")}
                 />
+              </div>
+            )}
+
+            {/* Email Status Info (for debugging - can be removed in production) */}
+            {emailStatus && process.env.NODE_ENV === 'development' && (
+              <div className="mb-6 p-4 bg-gray-100 rounded-lg text-sm">
+                <h4 className="font-semibold mb-2">Email Status (Dev Mode)</h4>
+                <p>Welcome Email: {emailStatus.welcomeEmailSent ? '✅ Sent' : '❌ Failed'}</p>
+                <p>Admin Notification: {emailStatus.adminNotificationSent ? '✅ Sent' : '❌ Failed'}</p>
+                {emailStatus.errors.length > 0 && (
+                  <div className="mt-2">
+                    <p className="text-red-600">Errors:</p>
+                    <ul className="list-disc list-inside text-red-600">
+                      {emailStatus.errors.map((error, index) => (
+                        <li key={index}>{error}</li>
+                      ))}
+                    </ul>
+                  </div>
+                )}
               </div>
             )}
 
