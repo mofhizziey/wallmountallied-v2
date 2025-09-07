@@ -70,5 +70,15 @@
     "status": "completed",
     "fromAccount": "checking",
     "createdBy": "admin"
+  },
+  {
+    "id": "mfa0enic9kqoi7aunhu",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "transfer",
+    "amount": 100,
+    "description": "Transfer from checking to savings",
+    "category": "transfer",
+    "date": "2025-09-07T18:11:30.564Z",
+    "status": "completed"
   }
 ]

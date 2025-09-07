@@ -54,7 +54,7 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
     { name: "Transfer", href: "/dashboard/transfer", icon: ArrowLeftRight },
     { name: "Bills", href: "/dashboard/bills", icon: Receipt },
     { name: "Analytics", href: "/dashboard/analytics", icon: BarChart3 },
-    { name: "Settings", href: "/dashboard/settings", icon: Settings },
+    { name: "Settings", href: "/settings", icon: Settings },
   ]
 
   return (
@@ -113,11 +113,11 @@ export function DashboardLayout({ children }: DashboardLayoutProps) {
                   <DropdownMenuSeparator />
                   <DropdownMenuItem>
                     <User className="mr-2 h-4 w-4" />
-                    <span>Profile</span>
+                    <a href="/profile">Profile</a>
                   </DropdownMenuItem>
                   <DropdownMenuItem>
                     <Settings className="mr-2 h-4 w-4" />
-                    <span>Settings</span>
+                    <a href="/settings">Settings</a>
                   </DropdownMenuItem>
                   <DropdownMenuSeparator />
                   <DropdownMenuItem onClick={handleLogout}>
