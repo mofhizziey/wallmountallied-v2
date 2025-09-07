@@ -119,6 +119,47 @@ export default function AdminDashboardPage() {
     filterUsers()
   }, [users, searchTerm, filters])
 
+  // API Functions
+  const fetchTransactions = async () => {
+    try {
+      const response = await fetch('/api/admin/transactions')
+      const data = await response.json()
+      
+      if (data.success) {
+        return data.transactions || []
+      } else {
+        console.error('Failed to fetch transactions:', data.error)
+        return []
+      }
+    } catch (error) {
+      console.error('Error fetching transactions:', error)
+      return []
+    }
+  }
+
+  const createTransaction = async (transactionData: any) => {
+    try {
+      const response = await fetch('/api/admin/transactions', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(transactionData),
+      })
+      
+      const data = await response.json()
+      
+      if (data.success) {
+        return data.transaction
+      } else {
+        throw new Error(data.error || 'Failed to create transaction')
+      }
+    } catch (error) {
+      console.error('Error creating transaction:', error)
+      throw error
+    }
+  }
+
   const loadData = async () => {
     try {
       setLoading(true)
@@ -127,7 +168,7 @@ export default function AdminDashboardPage() {
 
       console.log("[Admin] Loading data from API...")
 
-      // Create mock data if APIs don't exist yet
+      // Create mock users if APIs don't exist yet
       const mockUsers: User[] = [
         {
           id: "user-1",
@@ -191,61 +232,35 @@ export default function AdminDashboardPage() {
         },
       ]
 
-      const mockTransactions: Transaction[] = [
-        {
-          id: "txn-1",
-          userId: "user-1",
-          type: "credit",
-          amount: 1000.0,
-          description: "Salary Deposit",
-          date: new Date().toISOString(),
-          category: "Income",
-          status: "completed",
-          fromAccount: "checking",
-        },
-        {
-          id: "txn-2",
-          userId: "user-1",
-          type: "debit",
-          amount: 50.0,
-          description: "ATM Withdrawal",
-          date: new Date(Date.now() - 3600000).toISOString(),
-          category: "Cash",
-          status: "completed",
-          fromAccount: "checking",
-        },
-        {
-          id: "txn-3",
-          userId: "user-2",
-          type: "credit",
-          amount: 1200.0,
-          description: "Initial Deposit",
-          date: new Date(Date.now() - 86400000).toISOString(),
-          category: "Deposit",
-          status: "pending",
-          fromAccount: "checking",
-        },
-      ]
-
       try {
-        // Try to fetch from API first
+        // Try to fetch users from API first
         const allUsers = await dataStore.getAllUsersAPI()
-        const allTransactions = await dataStore.getAllTransactionsAPI()
-
-        if (allUsers.length > 0 || allTransactions.length > 0) {
-          console.log("[Admin] Loaded data from API - Users:", allUsers.length, "Transactions:", allTransactions.length)
+        console.log("[Admin] Users from API:", allUsers.length)
+        
+        if (allUsers.length > 0) {
           setUsers(allUsers)
-          setTransactions(allTransactions)
           setFilteredUsers(allUsers)
         } else {
-          throw new Error("No data from API")
+          console.log("[Admin] No users from API, using mock data")
+          setUsers(mockUsers)
+          setFilteredUsers(mockUsers)
         }
       } catch (apiError) {
-        console.log("[Admin] API not available, using mock data")
+        console.log("[Admin] Users API not available, using mock data")
         setUsers(mockUsers)
-        setTransactions(mockTransactions)
         setFilteredUsers(mockUsers)
       }
+
+      // Fetch transactions from the new API
+      try {
+        const allTransactions = await fetchTransactions()
+        console.log("[Admin] Transactions from API:", allTransactions.length)
+        setTransactions(allTransactions)
+      } catch (apiError) {
+        console.log("[Admin] Transactions API not available")
+        setTransactions([])
+      }
+
     } catch (error) {
       console.error("[Admin] Error loading data:", error)
       setError("Failed to load dashboard data")
@@ -406,6 +421,7 @@ export default function AdminDashboardPage() {
           throw new Error("Invalid action")
       }
 
+      // Update user balance locally
       if (accountType === "checking") {
         targetUser.checkingBalance = newBalance
         if (targetUser.accountStatus === "verified") {
@@ -418,22 +434,36 @@ export default function AdminDashboardPage() {
         }
       }
 
-      // Create transaction record
-      const newTransaction: Transaction = {
-        id: `txn-${Date.now()}`,
+      // Create transaction via API
+      const transactionData = {
         userId: targetUser.id,
-        type: action === "add" ? "credit" : "debit",
+        type: action === "subtract" ? "debit" : "credit",
         amount: amount,
         description: `Admin ${action}: ${balanceUpdateData.reason}`,
-        date: new Date().toISOString(),
         category: "Admin Action",
         status: "completed",
         fromAccount: accountType,
       }
 
+      try {
+        const newTransaction = await createTransaction(transactionData)
+        console.log("[Admin] Transaction created via API:", newTransaction)
+        
+        // Refresh transactions from API
+        const updatedTransactions = await fetchTransactions()
+        setTransactions(updatedTransactions)
+        
+      } catch (transactionError) {
+        console.error("[Admin] Failed to create transaction via API:", transactionError)
+        toast({
+          title: "Warning",
+          description: "Balance updated but transaction record may not have been saved",
+          variant: "destructive",
+        })
+      }
+
       updatedUsers[userIndex] = targetUser
       setUsers(updatedUsers)
-      setTransactions([newTransaction, ...transactions])
 
       toast({
         title: "Success",
@@ -505,7 +535,7 @@ export default function AdminDashboardPage() {
         return
       }
 
-      // Update balances
+      // Update balances locally
       if (transferData.fromAccount === "checking") {
         fromUser.checkingBalance -= transferData.amount
         if (fromUser.accountStatus === "verified") {
@@ -530,37 +560,54 @@ export default function AdminDashboardPage() {
         }
       }
 
-      // Create transaction records
-      const debitTransaction: Transaction = {
-        id: `txn-${Date.now()}-debit`,
+      // Create transaction records via API
+      const debitTransactionData = {
         userId: fromUser.id,
         type: "debit",
         amount: transferData.amount,
         description: `Admin Transfer to ${toUser.firstName} ${toUser.lastName}: ${transferData.reason}`,
-        date: new Date().toISOString(),
         category: "Transfer",
         status: "completed",
         fromAccount: transferData.fromAccount,
         toAccount: transferData.toAccount,
       }
 
-      const creditTransaction: Transaction = {
-        id: `txn-${Date.now()}-credit`,
+      const creditTransactionData = {
         userId: toUser.id,
         type: "credit",
         amount: transferData.amount,
         description: `Admin Transfer from ${fromUser.firstName} ${fromUser.lastName}: ${transferData.reason}`,
-        date: new Date().toISOString(),
         category: "Transfer",
         status: "completed",
         fromAccount: transferData.fromAccount,
         toAccount: transferData.toAccount,
+      }
+
+      try {
+        // Create both transactions via API
+        await Promise.all([
+          createTransaction(debitTransactionData),
+          createTransaction(creditTransactionData)
+        ])
+        
+        console.log("[Admin] Transfer transactions created via API")
+        
+        // Refresh transactions from API
+        const updatedTransactions = await fetchTransactions()
+        setTransactions(updatedTransactions)
+        
+      } catch (transactionError) {
+        console.error("[Admin] Failed to create transfer transactions via API:", transactionError)
+        toast({
+          title: "Warning",
+          description: "Transfer completed but transaction records may not have been saved",
+          variant: "destructive",
+        })
       }
 
       updatedUsers[fromUserIndex] = fromUser
       updatedUsers[toUserIndex] = toUser
       setUsers(updatedUsers)
-      setTransactions([debitTransaction, creditTransaction, ...transactions])
 
       toast({
         title: "Success",
@@ -1022,9 +1069,18 @@ export default function AdminDashboardPage() {
             <Card>
               <CardHeader>
                 <CardTitle>Transaction History</CardTitle>
-                <CardDescription>View and monitor all user transactions</CardDescription>
+                <CardDescription>View and monitor all user transactions (loaded from API)</CardDescription>
               </CardHeader>
               <CardContent>
+                <div className="mb-4 flex justify-between items-center">
+                  <div className="text-sm text-gray-600">
+                    Showing {transactions.length} transactions from API
+                  </div>
+                  <Button onClick={loadData} variant="outline" size="sm">
+                    <Activity className="w-4 h-4 mr-2" />
+                    Refresh
+                  </Button>
+                </div>
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
@@ -1045,12 +1101,15 @@ export default function AdminDashboardPage() {
                           Description
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
+                          Account
+                        </th>
+                        <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Status
                         </th>
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {transactions.slice(0, 50).map((transaction) => {
+                      {transactions.slice(0, 100).map((transaction) => {
                         const user = users.find((u) => u.id === transaction.userId)
                         return (
                           <tr key={transaction.id} className="hover:bg-gray-50">
@@ -1061,7 +1120,7 @@ export default function AdminDashboardPage() {
                               <div className="text-sm font-medium text-gray-900">
                                 {user ? `${user.firstName} ${user.lastName}` : "Unknown User"}
                               </div>
-                              <div className="text-sm text-gray-500">{user?.accountNumber}</div>
+                              <div className="text-sm text-gray-500">{user?.accountNumber || transaction.userId}</div>
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <Badge variant={transaction.type === "credit" ? "default" : "secondary"}>
@@ -1073,8 +1132,21 @@ export default function AdminDashboardPage() {
                                 {transaction.type === "credit" ? "+" : "-"}${transaction.amount.toLocaleString()}
                               </span>
                             </td>
-                            <td className="px-6 py-4 text-sm text-gray-900 max-w-xs truncate">
-                              {transaction.description}
+                            <td className="px-6 py-4 text-sm text-gray-900 max-w-xs">
+                              <div className="truncate" title={transaction.description}>
+                                {transaction.description}
+                              </div>
+                              {transaction.category && (
+                                <div className="text-xs text-gray-500">{transaction.category}</div>
+                              )}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {transaction.fromAccount && (
+                                <div>From: {transaction.fromAccount}</div>
+                              )}
+                              {transaction.toAccount && transaction.toAccount !== transaction.fromAccount && (
+                                <div>To: {transaction.toAccount}</div>
+                              )}
                             </td>
                             <td className="px-6 py-4 whitespace-nowrap">
                               <Badge
@@ -1097,7 +1169,10 @@ export default function AdminDashboardPage() {
                 </div>
 
                 {transactions.length === 0 && (
-                  <div className="text-center py-8 text-gray-500">No transactions found</div>
+                  <div className="text-center py-8 text-gray-500">
+                    <div className="mb-2">No transactions found</div>
+                    <div className="text-xs">Transactions will appear here when created via the Admin Actions tab</div>
+                  </div>
                 )}
               </CardContent>
             </Card>
@@ -1108,7 +1183,7 @@ export default function AdminDashboardPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Balance Management</CardTitle>
-                  <CardDescription>Update user account balances</CardDescription>
+                  <CardDescription>Update user account balances (creates transaction via API)</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Dialog open={isBalanceDialogOpen} onOpenChange={setIsBalanceDialogOpen}>
@@ -1121,7 +1196,7 @@ export default function AdminDashboardPage() {
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Update User Balance</DialogTitle>
-                        <DialogDescription>Make adjustments to a user's account balance</DialogDescription>
+                        <DialogDescription>Make adjustments to a user's account balance (will create transaction record via API)</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
                         <div>
@@ -1217,7 +1292,7 @@ export default function AdminDashboardPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Transfer Funds</CardTitle>
-                  <CardDescription>Transfer money between user accounts</CardDescription>
+                  <CardDescription>Transfer money between user accounts (creates transaction records via API)</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
@@ -1230,7 +1305,7 @@ export default function AdminDashboardPage() {
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Transfer Funds</DialogTitle>
-                        <DialogDescription>Transfer money from one user account to another</DialogDescription>
+                        <DialogDescription>Transfer money from one user account to another (will create transaction records via API)</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
                         <div>

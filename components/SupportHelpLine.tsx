@@ -1,7 +1,8 @@
+"use client"
 import React, { useState, useEffect, useRef } from 'react';
 import { MessageCircle, X, Send, Bot, User, Phone, Mail, Clock, ChevronDown } from 'lucide-react';
 
-const SupportHelpline = () => {
+const SupportHelpLine = () => {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState([
     {
@@ -340,4 +341,4 @@ const SupportHelpline = () => {
   );
 };
 
-export default SupportHelpline;
+export default SupportHelpLine;

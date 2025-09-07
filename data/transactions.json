@@ -1,0 +1,74 @@
+[
+  {
+    "id": "mf9ysnehvtda9dvn6kf",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 3000,
+    "description": "Admin add: Food",
+    "date": "2025-09-07T17:26:24.377Z",
+    "category": "Admin Action",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mf9ysniblz6el6xlyh9",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 3000,
+    "description": "Admin add: Food",
+    "date": "2025-09-07T17:26:24.515Z",
+    "category": "Admin Action",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mf9z0456155iu4haaob",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 20,
+    "description": "Admin add: groceries",
+    "date": "2025-09-07T17:32:12.666Z",
+    "category": "Admin Action",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mf9z4pnm7lrd50ziwj",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 100,
+    "description": "Admin add: 7000",
+    "date": "2025-09-07T17:35:47.170Z",
+    "category": "Admin Action",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mf9z620r6coy6qqpk7u",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Admin add: IRS TAX TREAS",
+    "date": "2025-09-07T17:36:49.851Z",
+    "category": "Admin Action",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mf9zkkrd5yvj7oivt6s",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 25000,
+    "description": "Admin add: IRS Tax Refund",
+    "date": "2025-09-07T17:48:07.321Z",
+    "category": "Admin Action",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  }
+]

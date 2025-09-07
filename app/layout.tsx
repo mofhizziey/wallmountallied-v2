@@ -4,7 +4,7 @@ import { Inter } from "next/font/google"
 import "./globals.css"
 import { Toaster } from "@/components/ui/toaster"
 import { DataDebug } from "@/components/data-debug"
-
+import SupportHelpLine from "@/components/SupportHelpLine"
 const inter = Inter({ subsets: ["latin"] })
 
 export const metadata: Metadata = {
@@ -23,7 +23,8 @@ export default function RootLayout({
       <body className={inter.className}>
         {children}
         <Toaster />
-        <DataDebug />
+        <SupportHelpLine/>
+  {/* {      <DataDebug />} */}
       </body>
     </html>
   )

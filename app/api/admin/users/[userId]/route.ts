@@ -1,4 +1,3 @@
-// app/api/admin/users/[userId]/route.ts
 import { NextRequest, NextResponse } from 'next/server'
 import { promises as fs } from 'fs'
 import path from 'path'
@@ -18,6 +17,43 @@ async function ensureDataFile() {
     await fs.access(DATA_FILE)
   } catch {
     await fs.writeFile(DATA_FILE, JSON.stringify({ users: [], transactions: [], admins: [] }))
+  }
+}
+
+// GET /api/admin/users/[userId] - Get a specific user (add this if missing)
+export async function GET(
+  request: NextRequest,
+  { params }: { params: { userId: string } }
+) {
+  try {
+    await ensureDataFile()
+    
+    const { userId } = params
+    
+    // Read current data
+    const fileContent = await fs.readFile(DATA_FILE, 'utf-8')
+    const data = JSON.parse(fileContent)
+    
+    // Find the user
+    const user = data.users.find((u: any) => u.id === userId)
+    
+    if (!user) {
+      return NextResponse.json(
+        { error: 'User not found' },
+        { status: 404 }
+      )
+    }
+    
+    return NextResponse.json({
+      success: true,
+      user
+    })
+  } catch (error) {
+    console.error('Error getting user:', error)
+    return NextResponse.json(
+      { error: 'Failed to get user' },
+      { status: 500 }
+    )
   }
 }
 
@@ -69,7 +105,16 @@ export async function PATCH(
   }
 }
 
-// DELETE /api/admin/users/[userId] - Delete a user (optional)
+// PUT /api/admin/users/[userId] - Update a specific user (alias for PATCH)
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { userId: string } }
+) {
+  // Just call the PATCH function
+  return PATCH(request, { params });
+}
+
+// DELETE /api/admin/users/[userId] - Delete a user
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { userId: string } }
