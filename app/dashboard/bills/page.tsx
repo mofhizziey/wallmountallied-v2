@@ -233,12 +233,10 @@ export default function BillsPage() {
 
   const isAccountRestricted = userData.accountStatus !== "verified" || userData.availableCheckingBalance === 0
 
-  const pendingBills = bills.filter((bill) => bill.status === "pending")
-  const paidBills = bills.filter((bill) => bill.status === "paid")
-  const totalDue = pendingBills.reduce((sum, bill) => sum + bill.amount, 0)
-  const totalPaidThisMonth = paidBills
-    .filter((bill) => new Date(bill.dueDate).getMonth() === new Date().getMonth())
-    .reduce((sum, bill) => sum + bill.amount, 0)
+  const pendingBills = bills?.[0]?.filter((bill) => bill.status === "pending")
+  const paidBills = bills?.[0]?.filter((bill) => bill.status === "paid")
+  const totalDue = pendingBills?.reduce((sum, bill) => sum + bill.amount, 0)
+  const totalPaidThisMonth = paidBills?.[0]?.filter((bill) => new Date(bill.dueDate).getMonth() === new Date().getMonth()).reduce((sum, bill) => sum + bill.amount, 0)
 
   return (
     <DashboardLayout>
@@ -256,7 +254,7 @@ export default function BillsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">{formatCurrency(totalDue)}</div>
-              <p className="text-xs text-muted-foreground">{pendingBills.length} pending bills</p>
+              <p className="text-xs text-muted-foreground">{pendingBills?.length} pending bills</p>
             </CardContent>
           </Card>
           <Card>
@@ -266,16 +264,16 @@ export default function BillsPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold">
-                {pendingBills.length > 0
+                {pendingBills?.length > 0
                   ? formatDate(
-                      pendingBills.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
+                      pendingBills?.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
                         .dueDate,
                     )
                   : "None"}
               </div>
               <p className="text-xs text-muted-foreground">
-                {pendingBills.length > 0
-                  ? pendingBills.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
+                {pendingBills?.length > 0
+                  ? pendingBills?.sort((a, b) => new Date(a.dueDate).getTime() - new Date(b.dueDate).getTime())[0]
                       .company
                   : "All bills paid"}
               </p>
@@ -300,7 +298,7 @@ export default function BillsPage() {
               <CardDescription>Your successfully paid bills</CardDescription>
             </CardHeader>
             <CardContent>
-              {paidBills.length === 0 ? (
+              {paidBills?.length === 0 ? (
                 <div className="text-center py-8">
                   <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
                   <p className="text-gray-600 mb-2">No paid bills yet</p>
@@ -308,7 +306,7 @@ export default function BillsPage() {
                 </div>
               ) : (
                 <div className="space-y-4">
-                  {paidBills.map((bill) => {
+                  {paidBills?.map((bill) => {
                     const IconComponent = categoryIcons[bill.category] || Home // Default icon
                     return (
                       <div key={bill.id} className="flex items-center justify-between p-4 border rounded-lg">
@@ -356,11 +354,11 @@ export default function BillsPage() {
                   >
                     <SelectTrigger>
                       <SelectValue
-                        placeholder={pendingBills.length > 0 ? "Choose a bill to pay" : "No pending bills"}
+                        placeholder={pendingBills?.length > 0 ? "Choose a bill to pay" : "No pending bills"}
                       />
                     </SelectTrigger>
                     <SelectContent>
-                      {pendingBills.map((bill) => (
+                      {pendingBills?.map((bill) => (
                         <SelectItem key={bill.id} value={bill.id}>
                           {bill.company} - {formatCurrency(bill.amount)} (Due: {formatDate(bill.dueDate)})
                         </SelectItem>
@@ -381,7 +379,7 @@ export default function BillsPage() {
                       className="pl-8"
                       value={paymentData.amount}
                       onChange={(e) => setPaymentData((prev) => ({ ...prev, amount: e.target.value }))}
-                      disabled={isAccountRestricted || pendingBills.length === 0}
+                      disabled={isAccountRestricted || pendingBills?.length === 0}
                     />
                   </div>
                 </div>
@@ -390,7 +388,7 @@ export default function BillsPage() {
                   <Select
                     value={paymentData.fromAccount}
                     onValueChange={(value) => setPaymentData((prev) => ({ ...prev, fromAccount: value }))}
-                    disabled={isAccountRestricted || pendingBills.length === 0}
+                    disabled={isAccountRestricted || pendingBills?.length === 0}
                   >
                     <SelectTrigger>
                       <SelectValue placeholder="Select account" />
@@ -414,7 +412,7 @@ export default function BillsPage() {
                     value={paymentData.paymentDate}
                     onChange={(e) => setPaymentData((prev) => ({ ...prev, paymentDate: e.target.value }))}
                     min={new Date().toISOString().split("T")[0]}
-                    disabled={isAccountRestricted || pendingBills.length === 0}
+                    disabled={isAccountRestricted || pendingBills?.length === 0}
                   />
                 </div>
                 <Button type="submit" className="w-full" disabled={isAccountRestricted || pendingBills.length === 0}>

@@ -75,6 +75,20 @@ export interface Transaction {
   toAccount?: string;
 }
 
+export interface Bill {
+  id: string;
+  userId: string;
+  company: string;
+  amount: number;
+  dueDate: string;
+  category: string;
+  status: 'pending' | 'paid' | 'overdue';
+  accountNumber?: string;
+  description?: string;
+  createdAt: string;
+  updatedAt: string;
+}
+
 export interface UserFilters {
   status: string;
   verification: string;
@@ -652,5 +666,202 @@ export class DataStore {
     
     localStorage.removeItem('isAdminAuthenticated');
     localStorage.removeItem('currentAdminId');
+  }
+
+  // ===== BILLS MANAGEMENT METHODS =====
+
+  // Get bills by user ID
+  async getBillsByUserId(userId: string): Promise<Bill[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/bills?userId=${userId}`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to fetch bills:', data.error);
+        return [];
+      }
+
+      return data.bills || [];
+    } catch (error) {
+      console.error('Error fetching bills:', error);
+      return [];
+    }
+  }
+
+  // Create a new bill
+  async createBill(billData: {
+    userId: string;
+    company: string;
+    amount: number;
+    dueDate: string;
+    category: string;
+    accountNumber?: string;
+    description?: string;
+  }): Promise<{ success: boolean; bill?: Bill; error?: string }> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/bills`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...billData,
+          status: 'pending',
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        return {
+          success: false,
+          error: data.error || 'Failed to create bill'
+        };
+      }
+
+      return {
+        success: true,
+        bill: data.bill
+      };
+    } catch (error) {
+      console.error('Error creating bill:', error);
+      return {
+        success: false,
+        error: 'Network error. Please check your connection and try again.'
+      };
+    }
+  }
+
+  // Update bill status or details
+  async updateBill(billId: string, updateData: Partial<Bill>): Promise<Bill | null> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/bills/${billId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          ...updateData,
+          updatedAt: new Date().toISOString(),
+        }),
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to update bill:', data.error);
+        return null;
+      }
+
+      return data.bill || null;
+    } catch (error) {
+      console.error('Error updating bill:', error);
+      return null;
+    }
+  }
+
+  // Delete a bill
+  async deleteBill(billId: string): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/bills/${billId}`, {
+        method: 'DELETE',
+      });
+
+      if (!response.ok) {
+        console.error('Failed to delete bill');
+        return false;
+      }
+
+      return true;
+    } catch (error) {
+      console.error('Error deleting bill:', error);
+      return false;
+    }
+  }
+
+  // Get all bills for admin
+  async getAllBillsAPI(): Promise<Bill[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/admin/bills`);
+      const data = await response.json();
+
+      if (!response.ok) {
+        console.error('Failed to fetch all bills:', data.error);
+        return [];
+      }
+
+      return data.bills || [];
+    } catch (error) {
+      console.error('Error fetching all bills:', error);
+      return [];
+    }
+  }
+
+  // Mark bill as paid
+  async markBillAsPaid(billId: string): Promise<Bill | null> {
+    return this.updateBill(billId, {
+      status: 'paid'
+    });
+  }
+
+  // Mark bill as overdue
+  async markBillAsOverdue(billId: string): Promise<Bill | null> {
+    return this.updateBill(billId, {
+      status: 'overdue'
+    });
+  }
+
+  // Get bills by status
+  async getBillsByStatus(userId: string, status: 'pending' | 'paid' | 'overdue'): Promise<Bill[]> {
+    try {
+      const allBills = await this.getBillsByUserId(userId);
+      return allBills.filter(bill => bill.status === status);
+    } catch (error) {
+      console.error('Error filtering bills by status:', error);
+      return [];
+    }
+  }
+
+  // Get overdue bills for a user
+  async getOverdueBills(userId: string): Promise<Bill[]> {
+    try {
+      const allBills = await this.getBillsByUserId(userId);
+      const currentDate = new Date();
+      
+      return allBills.filter(bill => {
+        const dueDate = new Date(bill.dueDate);
+        return bill.status === 'pending' && dueDate < currentDate;
+      });
+    } catch (error) {
+      console.error('Error fetching overdue bills:', error);
+      return [];
+    }
+  }
+
+  // Get upcoming bills (due in next 7 days)
+  async getUpcomingBills(userId: string): Promise<Bill[]> {
+    try {
+      const allBills = await this.getBillsByUserId(userId);
+      const currentDate = new Date();
+      const nextWeek = new Date(currentDate.getTime() + 7 * 24 * 60 * 60 * 1000);
+      
+      return allBills.filter(bill => {
+        const dueDate = new Date(bill.dueDate);
+        return bill.status === 'pending' && dueDate >= currentDate && dueDate <= nextWeek;
+      });
+    } catch (error) {
+      console.error('Error fetching upcoming bills:', error);
+      return [];
+    }
+  }
+
+  // Sync version for compatibility (fallback)
+  getBillsByUserIdSync(userId: string): Bill[] {
+    console.warn('getBillsByUserIdSync called - this should be replaced with async version');
+    // For backward compatibility, return empty array
+    // In a real implementation, you might want to cache bills or use a different approach
+    return [];
   }
 }

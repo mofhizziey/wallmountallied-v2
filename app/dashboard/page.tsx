@@ -7,6 +7,24 @@ import { Button } from "@/components/ui/button"
 import { Badge } from "@/components/ui/badge"
 import { Alert, AlertDescription } from "@/components/ui/alert"
 import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog"
+import { Input } from "@/components/ui/input"
+import { Label } from "@/components/ui/label"
+import { Textarea } from "@/components/ui/textarea"
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select"
+import {
   CreditCard,
   TrendingUp,
   ArrowUpRight,
@@ -16,6 +34,11 @@ import {
   Shield,
   Bell,
   AlertTriangle,
+  CheckCircle,
+  Clock,
+  XCircle,
+  Upload,
+  Info,
 } from "lucide-react"
 import { DashboardLayout } from "@/components/dashboard-layout"
 import { DataStore, type User } from "@/lib/data-store"
@@ -31,13 +54,30 @@ interface Transaction {
   status: string
 }
 
+type ModalType = "transfer" | "bills" | "statements" | "security" | "verification" | null
+
 export default function DashboardPage() {
   const router = useRouter()
   const [userData, setUserData] = useState<User | null>(null)
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [isLoading, setIsLoading] = useState(true)
   const [error, setError] = useState<string>("")
+  const [activeModal, setActiveModal] = useState<ModalType>(null)
   const { toast } = useToast()
+
+  // Form states for modals
+  const [transferForm, setTransferForm] = useState({
+    fromAccount: "checking",
+    toAccount: "savings",
+    amount: "",
+    description: "",
+  })
+  const [billForm, setBillForm] = useState({
+    payee: "",
+    amount: "",
+    dueDate: "",
+    category: "utilities",
+  })
 
   useEffect(() => {
     const loadUserData = async () => {
@@ -121,34 +161,86 @@ export default function DashboardPage() {
     loadUserData()
   }, [router, toast])
 
-  // Helper function to create sample transactions (for testing)
-  const createSampleTransaction = async (type: 'deposit' | 'withdrawal', amount: number, description: string) => {
-    const currentUserId = localStorage.getItem("currentUserId")
-    if (!currentUserId) return
-
-    const dataStore = DataStore.getInstance()
-    const result = await dataStore.createTransaction({
-      userId: currentUserId,
-      type,
-      amount,
-      description,
-      category: 'general'
-    })
-
-    if (result.success) {
-      // Reload transactions
-      const userTransactions = await dataStore.getTransactionsByUserId(currentUserId)
-      const formattedTransactions = dataStore.formatTransactionsForDashboard(userTransactions)
-      setTransactions(formattedTransactions)
-      
-      // Update user balance if needed
-      if (userData && result.newBalance !== undefined) {
-        setUserData({
-          ...userData,
-          checkingBalance: result.newBalance
-        })
-      }
+  const getVerificationStatusInfo = (status: string) => {
+    switch (status) {
+      case "verified":
+        return {
+          icon: CheckCircle,
+          color: "text-green-600",
+          bgColor: "bg-green-50",
+          borderColor: "border-green-200",
+          message: "Your identity has been verified. You have full access to all banking features.",
+          actionText: null
+        }
+      case "pending":
+        return {
+          icon: Clock,
+          color: "text-yellow-600",
+          bgColor: "bg-yellow-50",
+          borderColor: "border-yellow-200",
+          message: "Your documents are being reviewed. This typically takes 1-2 business days. Some features may be limited.",
+          actionText: "Check Status"
+        }
+      case "documents_required":
+        return {
+          icon: Upload,
+          color: "text-blue-600",
+          bgColor: "bg-blue-50",
+          borderColor: "border-blue-200",
+          message: "Please upload required documents to verify your identity and unlock all features.",
+          actionText: "Upload Documents"
+        }
+      case "rejected":
+        return {
+          icon: XCircle,
+          color: "text-red-600",
+          bgColor: "bg-red-50",
+          borderColor: "border-red-200",
+          message: "Document verification failed. Please resubmit clear, valid documents or contact support.",
+          actionText: "Resubmit Documents"
+        }
+      default:
+        return {
+          icon: Info,
+          color: "text-gray-600",
+          bgColor: "bg-gray-50",
+          borderColor: "border-gray-200",
+          message: "Complete identity verification to access all banking features.",
+          actionText: "Start Verification"
+        }
     }
+  }
+
+  const handleQuickAction = (action: ModalType) => {
+    if (userData && isAccountRestricted && (action === "transfer" || action === "bills")) {
+      toast({
+        title: "Action Restricted",
+        description: "Please complete identity verification to access this feature.",
+        variant: "destructive",
+      })
+      return
+    }
+    setActiveModal(action)
+  }
+
+  const handleTransferSubmit = () => {
+    // Here you would implement the actual transfer logic
+    toast({
+      title: "Transfer Initiated",
+      description: `Transfer of $${transferForm.amount} has been processed.`,
+    })
+    setActiveModal(null)
+    setTransferForm({ fromAccount: "checking", toAccount: "savings", amount: "", description: "" })
+  }
+
+  const handleBillPaymentSubmit = () => {
+    // Here you would implement the actual bill payment logic
+    toast({
+      title: "Bill Payment Scheduled",
+      description: `Payment to ${billForm.payee} has been scheduled.`,
+    })
+    setActiveModal(null)
+    setBillForm({ payee: "", amount: "", dueDate: "", category: "utilities" })
   }
 
   if (isLoading) {
@@ -215,7 +307,9 @@ export default function DashboardPage() {
   const accountStatus = userData.accountStatus || "active"
   const verificationStatus = userData.verificationStatus || "verified"
 
-  const isAccountRestricted = accountStatus !== "verified" && accountStatus !== "active"
+  const isAccountRestricted = verificationStatus !== "verified"
+  const verificationInfo = getVerificationStatusInfo(verificationStatus)
+  const VerificationIcon = verificationInfo.icon
 
   return (
     <DashboardLayout>
@@ -232,15 +326,21 @@ export default function DashboardPage() {
           </Button>
         </div>
 
-        {/* Account Status Alert */}
-        {isAccountRestricted && (
-          <Alert className="border-yellow-200 bg-yellow-50">
-            <AlertTriangle className="h-4 w-4 text-yellow-600" />
-            <AlertDescription className="text-yellow-800">
-              Your account is currently restricted. Funds will be available once your identity is fully verified by our
-              team.
-              {verificationStatus === "documents_required" &&
-                " Please ensure all required documents are submitted."}
+        {/* Verification Status Alert */}
+        {verificationStatus !== "verified" && (
+          <Alert className={`${verificationInfo.borderColor} ${verificationInfo.bgColor}`}>
+            <VerificationIcon className={`h-4 w-4 ${verificationInfo.color}`} />
+            <AlertDescription className={verificationInfo.color}>
+              {verificationInfo.message}
+              {verificationInfo.actionText && (
+                <Button
+                  variant="link"
+                  className={`p-0 ml-2 ${verificationInfo.color} underline`}
+                  onClick={() => setActiveModal("verification")}
+                >
+                  {verificationInfo.actionText}
+                </Button>
+              )}
             </AlertDescription>
           </Alert>
         )}
@@ -280,9 +380,12 @@ export default function DashboardPage() {
             </CardHeader>
             <CardContent>
               <div className="text-2xl font-bold capitalize">{accountStatus}</div>
-              <p className="text-xs text-muted-foreground">
-                Verification: {verificationStatus.replace("_", " ")}
-              </p>
+              <div className="flex items-center gap-1 mt-1">
+                <VerificationIcon className={`h-3 w-3 ${verificationInfo.color}`} />
+                <p className={`text-xs capitalize ${verificationInfo.color}`}>
+                  {verificationStatus.replace("_", " ")}
+                </p>
+              </div>
             </CardContent>
           </Card>
           <Card>
@@ -309,19 +412,47 @@ export default function DashboardPage() {
           </CardHeader>
           <CardContent>
             <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-              <Button variant="outline" className="h-20 flex-col bg-transparent" disabled={isAccountRestricted}>
+              <Button 
+                variant="outline" 
+                className="h-20 flex-col bg-transparent relative" 
+                onClick={() => handleQuickAction("transfer")}
+                disabled={isAccountRestricted}
+              >
                 <ArrowUpRight className="h-6 w-6 mb-2" />
                 Transfer Money
+                {isAccountRestricted && (
+                  <Badge variant="secondary" className="absolute -top-1 -right-1 text-xs px-1">
+                    Locked
+                  </Badge>
+                )}
               </Button>
-              <Button variant="outline" className="h-20 flex-col bg-transparent" disabled={isAccountRestricted}>
+              <Button 
+                variant="outline" 
+                className="h-20 flex-col bg-transparent relative" 
+                onClick={() => handleQuickAction("bills")}
+                disabled={isAccountRestricted}
+              >
                 <DollarSign className="h-6 w-6 mb-2" />
                 Pay Bills
+                {isAccountRestricted && (
+                  <Badge variant="secondary" className="absolute -top-1 -right-1 text-xs px-1">
+                    Locked
+                  </Badge>
+                )}
               </Button>
-              <Button variant="outline" className="h-20 flex-col bg-transparent">
+              <Button 
+                variant="outline" 
+                className="h-20 flex-col bg-transparent" 
+                onClick={() => handleQuickAction("statements")}
+              >
                 <CreditCard className="h-6 w-6 mb-2" />
                 View Statements
               </Button>
-              <Button variant="outline" className="h-20 flex-col bg-transparent">
+              <Button 
+                variant="outline" 
+                className="h-20 flex-col bg-transparent" 
+                onClick={() => handleQuickAction("security")}
+              >
                 <Shield className="h-6 w-6 mb-2" />
                 Security Settings
               </Button>
@@ -385,6 +516,259 @@ export default function DashboardPage() {
             )}
           </CardContent>
         </Card>
+
+        {/* Modals */}
+        {/* Transfer Money Modal */}
+        <Dialog open={activeModal === "transfer"} onOpenChange={() => setActiveModal(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Transfer Money</DialogTitle>
+              <DialogDescription>
+                Transfer funds between your accounts
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="fromAccount">From Account</Label>
+                  <Select value={transferForm.fromAccount} onValueChange={(value) => 
+                    setTransferForm({...transferForm, fromAccount: value})
+                  }>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="checking">Checking ({formatCurrency(checkingBalance)})</SelectItem>
+                      <SelectItem value="savings">Savings ({formatCurrency(savingsBalance)})</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+                <div>
+                  <Label htmlFor="toAccount">To Account</Label>
+                  <Select value={transferForm.toAccount} onValueChange={(value) => 
+                    setTransferForm({...transferForm, toAccount: value})
+                  }>
+                    <SelectTrigger>
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="checking">Checking</SelectItem>
+                      <SelectItem value="savings">Savings</SelectItem>
+                    </SelectContent>
+                  </Select>
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="amount">Amount</Label>
+                <Input
+                  id="amount"
+                  placeholder="0.00"
+                  value={transferForm.amount}
+                  onChange={(e) => setTransferForm({...transferForm, amount: e.target.value})}
+                />
+              </div>
+              <div>
+                <Label htmlFor="description">Description (Optional)</Label>
+                <Input
+                  id="description"
+                  placeholder="What's this transfer for?"
+                  value={transferForm.description}
+                  onChange={(e) => setTransferForm({...transferForm, description: e.target.value})}
+                />
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setActiveModal(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleTransferSubmit} disabled={!transferForm.amount}>
+                Transfer ${transferForm.amount || "0.00"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Pay Bills Modal */}
+        <Dialog open={activeModal === "bills"} onOpenChange={() => setActiveModal(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Pay Bills</DialogTitle>
+              <DialogDescription>
+                Schedule or pay your bills
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div>
+                <Label htmlFor="payee">Payee</Label>
+                <Input
+                  id="payee"
+                  placeholder="Enter payee name"
+                  value={billForm.payee}
+                  onChange={(e) => setBillForm({...billForm, payee: e.target.value})}
+                />
+              </div>
+              <div className="grid grid-cols-2 gap-4">
+                <div>
+                  <Label htmlFor="billAmount">Amount</Label>
+                  <Input
+                    id="billAmount"
+                    placeholder="0.00"
+                    value={billForm.amount}
+                    onChange={(e) => setBillForm({...billForm, amount: e.target.value})}
+                  />
+                </div>
+                <div>
+                  <Label htmlFor="dueDate">Due Date</Label>
+                  <Input
+                    id="dueDate"
+                    type="date"
+                    value={billForm.dueDate}
+                    onChange={(e) => setBillForm({...billForm, dueDate: e.target.value})}
+                  />
+                </div>
+              </div>
+              <div>
+                <Label htmlFor="category">Category</Label>
+                <Select value={billForm.category} onValueChange={(value) => 
+                  setBillForm({...billForm, category: value})
+                }>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="utilities">Utilities</SelectItem>
+                    <SelectItem value="rent">Rent/Mortgage</SelectItem>
+                    <SelectItem value="insurance">Insurance</SelectItem>
+                    <SelectItem value="credit_card">Credit Card</SelectItem>
+                    <SelectItem value="other">Other</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setActiveModal(null)}>
+                Cancel
+              </Button>
+              <Button onClick={handleBillPaymentSubmit} disabled={!billForm.payee || !billForm.amount}>
+                Schedule Payment
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Statements Modal */}
+        <Dialog open={activeModal === "statements"} onOpenChange={() => setActiveModal(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Account Statements</DialogTitle>
+              <DialogDescription>
+                View and download your account statements
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="text-center py-8">
+                <CreditCard className="h-12 w-12 text-gray-400 mx-auto mb-4" />
+                <p className="text-gray-600 mb-2">No statements available yet</p>
+                <p className="text-sm text-gray-500">
+                  Statements will be available at the end of each month.
+                </p>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setActiveModal(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Security Settings Modal */}
+        <Dialog open={activeModal === "security"} onOpenChange={() => setActiveModal(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Security Settings</DialogTitle>
+              <DialogDescription>
+                Manage your account security preferences
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className="space-y-3">
+                <Button variant="outline" className="w-full justify-start">
+                  <Shield className="h-4 w-4 mr-2" />
+                  Change Password
+                </Button>
+                <Button variant="outline" className="w-full justify-start">
+                  <Shield className="h-4 w-4 mr-2" />
+                  Enable Two-Factor Authentication
+                </Button>
+                <Button variant="outline" className="w-full justify-start">
+                  <CreditCard className="h-4 w-4 mr-2" />
+                  Freeze/Unfreeze Account
+                </Button>
+                <Button variant="outline" className="w-full justify-start">
+                  <Bell className="h-4 w-4 mr-2" />
+                  Notification Preferences
+                </Button>
+              </div>
+            </div>
+            <DialogFooter>
+              <Button onClick={() => setActiveModal(null)}>Close</Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+
+        {/* Verification Modal */}
+        <Dialog open={activeModal === "verification"} onOpenChange={() => setActiveModal(null)}>
+          <DialogContent>
+            <DialogHeader>
+              <DialogTitle>Identity Verification</DialogTitle>
+              <DialogDescription>
+                Complete your identity verification to unlock all features
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4">
+              <div className={`p-4 rounded-lg ${verificationInfo.bgColor} ${verificationInfo.borderColor} border`}>
+                <div className="flex items-center gap-2 mb-2">
+                  <VerificationIcon className={`h-5 w-5 ${verificationInfo.color}`} />
+                  <span className={`font-medium ${verificationInfo.color}`}>
+                    Current Status: {verificationStatus.replace("_", " ").toUpperCase()}
+                  </span>
+                </div>
+                <p className={`text-sm ${verificationInfo.color}`}>
+                  {verificationInfo.message}
+                </p>
+              </div>
+              
+              {verificationStatus === "documents_required" && (
+                <div className="space-y-3">
+                  <h4 className="font-medium">Required Documents:</h4>
+                  <div className="space-y-2 text-sm text-gray-600">
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                      Government-issued photo ID (Driver's License, Passport, etc.)
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <div className="w-2 h-2 bg-blue-600 rounded-full"></div>
+                      Proof of address (Utility bill, Bank statement, etc.)
+                    </div>
+                  </div>
+                  <Button className="w-full">
+                    <Upload className="h-4 w-4 mr-2" />
+                    Upload Documents
+                  </Button>
+                </div>
+              )}
+            </div>
+            <DialogFooter>
+              <Button variant="outline" onClick={() => setActiveModal(null)}>
+                Close
+              </Button>
+              {verificationStatus !== "verified" && verificationStatus !== "pending" && (
+                <Button>
+                  Start Verification
+                </Button>
+              )}
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       </div>
     </DashboardLayout>
   )
