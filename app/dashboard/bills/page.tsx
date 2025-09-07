@@ -395,10 +395,10 @@ export default function BillsPage() {
                     </SelectTrigger>
                     <SelectContent>
                       <SelectItem value="checking">
-                        Checking - ****{userData.accountNumber.slice(-4)} ({formatCurrency(userData.checkingBalance)})
+                        Checking - ****{userData?.accountNumber?.slice(-4)} ({formatCurrency(userData.checkingBalance)})
                       </SelectItem>
                       <SelectItem value="savings">
-                        Savings - ****{(Number.parseInt(userData.accountNumber) + 1).toString().slice(-4)} (
+                        Savings - ****{(Number.parseInt(userData?.accountNumber) + 1).toString().slice(-4)} (
                         {formatCurrency(userData.savingsBalance)})
                       </SelectItem>
                     </SelectContent>
