@@ -58,6 +58,14 @@ interface TransferData {
   reason: string
 }
 
+// Interface for calculated user balances from transactions
+interface UserBalance {
+  userId: string
+  checkingBalance: number
+  savingsBalance: number
+  totalBalance: number
+}
+
 export default function AdminDashboardPage() {
   const router = useRouter()
   const { toast } = useToast()
@@ -74,6 +82,10 @@ export default function AdminDashboardPage() {
   const [actionReason, setActionReason] = useState("")
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string>("")
+  
+  // New state for calculated balances from transactions
+  const [calculatedBalances, setCalculatedBalances] = useState<Map<string, UserBalance>>(new Map())
+  const [realTotalBalance, setRealTotalBalance] = useState<number>(0)
 
   const [filters, setFilters] = useState<UserFilters>({
     status: "all",
@@ -118,6 +130,76 @@ export default function AdminDashboardPage() {
     // Filter users whenever search term or filters change
     filterUsers()
   }, [users, searchTerm, filters])
+
+  useEffect(() => {
+    // Calculate balances from transactions whenever transactions or users change
+    calculateBalancesFromTransactions()
+  }, [transactions, users])
+
+  // NEW: Calculate real balances from transaction data
+  const calculateBalancesFromTransactions = () => {
+    console.log("[Admin] Calculating balances from transactions...")
+    
+    const balanceMap = new Map<string, UserBalance>()
+    let totalSystemBalance = 0
+
+    // Initialize balances for all users
+    users.forEach(user => {
+      balanceMap.set(user.id, {
+        userId: user.id,
+        checkingBalance: 0,
+        savingsBalance: 0,
+        totalBalance: 0
+      })
+    })
+
+    // Calculate balances from transactions
+    transactions.forEach(transaction => {
+      const userBalance = balanceMap.get(transaction.userId)
+      if (!userBalance) return
+
+      const amount = transaction.amount
+      const account = transaction.fromAccount || transaction.toAccount || 'checking'
+      
+      // Apply transaction to balance
+      if (transaction.type === 'credit' || transaction.type === 'deposit') {
+        if (account === 'savings') {
+          userBalance.savingsBalance += amount
+        } else {
+          userBalance.checkingBalance += amount
+        }
+      } else if (transaction.type === 'debit' || transaction.type === 'withdrawal') {
+        if (account === 'savings') {
+          userBalance.savingsBalance = Math.max(0, userBalance.savingsBalance - amount)
+        } else {
+          userBalance.checkingBalance = Math.max(0, userBalance.checkingBalance - amount)
+        }
+      }
+
+      // Update total balance for user
+      userBalance.totalBalance = userBalance.checkingBalance + userBalance.savingsBalance
+    })
+
+    // Calculate total system balance
+    balanceMap.forEach(balance => {
+      totalSystemBalance += balance.totalBalance
+    })
+
+    console.log(`[Admin] Calculated balances for ${balanceMap.size} users, total: $${totalSystemBalance.toLocaleString()}`)
+    
+    setCalculatedBalances(balanceMap)
+    setRealTotalBalance(totalSystemBalance)
+  }
+
+  // Helper function to get real balance for a user
+  const getRealUserBalance = (userId: string): UserBalance => {
+    return calculatedBalances.get(userId) || {
+      userId,
+      checkingBalance: 0,
+      savingsBalance: 0,
+      totalBalance: 0
+    }
+  }
 
   // API Functions
   const fetchTransactions = async () => {
@@ -186,10 +268,10 @@ export default function AdminDashboardPage() {
           licenseState: "NY",
           licenseUrl: null,
           accountNumber: "1234567890",
-          checkingBalance: 2500.0,
-          savingsBalance: 5000.0,
-          availableCheckingBalance: 2500.0,
-          availableSavingsBalance: 5000.0,
+          checkingBalance: 0, // Will be calculated from transactions
+          savingsBalance: 0, // Will be calculated from transactions
+          availableCheckingBalance: 0,
+          availableSavingsBalance: 0,
           createdAt: new Date().toISOString(),
           lastLogin: new Date().toISOString(),
           isActive: true,
@@ -216,9 +298,9 @@ export default function AdminDashboardPage() {
           licenseState: "CA",
           licenseUrl: null,
           accountNumber: "0987654321",
-          checkingBalance: 1200.0,
-          savingsBalance: 3000.0,
-          availableCheckingBalance: 0, // Restricted account
+          checkingBalance: 0, // Will be calculated from transactions
+          savingsBalance: 0, // Will be calculated from transactions
+          availableCheckingBalance: 0,
           availableSavingsBalance: 0,
           createdAt: new Date(Date.now() - 86400000).toISOString(),
           lastLogin: null,
@@ -251,11 +333,16 @@ export default function AdminDashboardPage() {
         setFilteredUsers(mockUsers)
       }
 
-      // Fetch transactions from the new API
+      // Fetch transactions from the API - THIS IS THE CRITICAL PART
       try {
         const allTransactions = await fetchTransactions()
         console.log("[Admin] Transactions from API:", allTransactions.length)
         setTransactions(allTransactions)
+        
+        // Log sample transactions for debugging
+        if (allTransactions.length > 0) {
+          console.log("[Admin] Sample transactions:", allTransactions.slice(0, 3))
+        }
       } catch (apiError) {
         console.log("[Admin] Transactions API not available")
         setTransactions([])
@@ -339,8 +426,7 @@ export default function AdminDashboardPage() {
           targetUser.accountStatus = "verified"
           targetUser.verificationStatus = "verified"
           targetUser.kycCompleted = true
-          targetUser.availableCheckingBalance = targetUser.checkingBalance
-          targetUser.availableSavingsBalance = targetUser.savingsBalance
+          // Don't set balance here - it comes from transactions
           break
         default:
           throw new Error("Unknown action type")
@@ -400,43 +486,11 @@ export default function AdminDashboardPage() {
         return
       }
 
-      const updatedUsers = [...users]
-      const targetUser = { ...updatedUsers[userIndex] }
       const { accountType, action, amount } = balanceUpdateData
 
-      const currentBalance = accountType === "checking" ? targetUser.checkingBalance : targetUser.savingsBalance
-      let newBalance: number
-
-      switch (action) {
-        case "add":
-          newBalance = currentBalance + amount
-          break
-        case "subtract":
-          newBalance = Math.max(0, currentBalance - amount)
-          break
-        case "set":
-          newBalance = amount
-          break
-        default:
-          throw new Error("Invalid action")
-      }
-
-      // Update user balance locally
-      if (accountType === "checking") {
-        targetUser.checkingBalance = newBalance
-        if (targetUser.accountStatus === "verified") {
-          targetUser.availableCheckingBalance = newBalance
-        }
-      } else {
-        targetUser.savingsBalance = newBalance
-        if (targetUser.accountStatus === "verified") {
-          targetUser.availableSavingsBalance = newBalance
-        }
-      }
-
-      // Create transaction via API
+      // Create transaction via API - this will update the real balance
       const transactionData = {
-        userId: targetUser.id,
+        userId: balanceUpdateData.userId,
         type: action === "subtract" ? "debit" : "credit",
         amount: amount,
         description: `Admin ${action}: ${balanceUpdateData.reason}`,
@@ -449,26 +503,26 @@ export default function AdminDashboardPage() {
         const newTransaction = await createTransaction(transactionData)
         console.log("[Admin] Transaction created via API:", newTransaction)
         
-        // Refresh transactions from API
+        // Refresh transactions from API to get updated data
         const updatedTransactions = await fetchTransactions()
         setTransactions(updatedTransactions)
+        
+        // The balance calculation will happen automatically via useEffect
+        
+        toast({
+          title: "Success",
+          description: `Balance updated successfully. Transaction created and balances recalculated.`,
+        })
         
       } catch (transactionError) {
         console.error("[Admin] Failed to create transaction via API:", transactionError)
         toast({
-          title: "Warning",
-          description: "Balance updated but transaction record may not have been saved",
+          title: "Error",
+          description: "Failed to create transaction. Balance not updated.",
           variant: "destructive",
         })
+        return
       }
-
-      updatedUsers[userIndex] = targetUser
-      setUsers(updatedUsers)
-
-      toast({
-        title: "Success",
-        description: `Balance updated successfully. New ${accountType} balance: $${newBalance.toFixed(2)}`,
-      })
 
       setIsBalanceDialogOpen(false)
       setBalanceUpdateData({
@@ -520,44 +574,22 @@ export default function AdminDashboardPage() {
         return
       }
 
-      const updatedUsers = [...users]
-      const fromUser = { ...updatedUsers[fromUserIndex] }
-      const toUser = { ...updatedUsers[toUserIndex] }
+      const fromUser = users[fromUserIndex]
+      const toUser = users[toUserIndex]
 
-      // Check balance
-      const fromBalance = transferData.fromAccount === "checking" ? fromUser.checkingBalance : fromUser.savingsBalance
+      // Check balance using calculated balances
+      const fromUserBalance = getRealUserBalance(fromUser.id)
+      const fromBalance = transferData.fromAccount === "checking" 
+        ? fromUserBalance.checkingBalance 
+        : fromUserBalance.savingsBalance
+
       if (fromBalance < transferData.amount) {
         toast({
           title: "Error",
-          description: "Insufficient funds",
+          description: `Insufficient funds. Available ${transferData.fromAccount} balance: $${fromBalance.toFixed(2)}`,
           variant: "destructive",
         })
         return
-      }
-
-      // Update balances locally
-      if (transferData.fromAccount === "checking") {
-        fromUser.checkingBalance -= transferData.amount
-        if (fromUser.accountStatus === "verified") {
-          fromUser.availableCheckingBalance = fromUser.checkingBalance
-        }
-      } else {
-        fromUser.savingsBalance -= transferData.amount
-        if (fromUser.accountStatus === "verified") {
-          fromUser.availableSavingsBalance = fromUser.savingsBalance
-        }
-      }
-
-      if (transferData.toAccount === "checking") {
-        toUser.checkingBalance += transferData.amount
-        if (toUser.accountStatus === "verified") {
-          toUser.availableCheckingBalance = toUser.checkingBalance
-        }
-      } else {
-        toUser.savingsBalance += transferData.amount
-        if (toUser.accountStatus === "verified") {
-          toUser.availableSavingsBalance = toUser.savingsBalance
-        }
       }
 
       // Create transaction records via API
@@ -596,23 +628,20 @@ export default function AdminDashboardPage() {
         const updatedTransactions = await fetchTransactions()
         setTransactions(updatedTransactions)
         
+        toast({
+          title: "Success",
+          description: `Transfer of $${transferData.amount.toFixed(2)} completed successfully`,
+        })
+        
       } catch (transactionError) {
         console.error("[Admin] Failed to create transfer transactions via API:", transactionError)
         toast({
-          title: "Warning",
-          description: "Transfer completed but transaction records may not have been saved",
+          title: "Error",
+          description: "Failed to create transfer transactions",
           variant: "destructive",
         })
+        return
       }
-
-      updatedUsers[fromUserIndex] = fromUser
-      updatedUsers[toUserIndex] = toUser
-      setUsers(updatedUsers)
-
-      toast({
-        title: "Success",
-        description: `Transfer of $${transferData.amount.toFixed(2)} completed successfully`,
-      })
 
       setIsTransferDialogOpen(false)
       setTransferData({
@@ -776,11 +805,12 @@ export default function AdminDashboardPage() {
     }
   }
 
+  // Calculate stats using REAL data from transactions
   const stats = {
     totalUsers: users.length,
     activeUsers: users.filter((u) => u.isActive).length,
     verifiedUsers: users.filter((u) => u.accountStatus === "verified").length,
-    totalBalance: users.reduce((sum, user) => sum + user.checkingBalance + user.savingsBalance, 0),
+    totalBalance: realTotalBalance, // NOW USING REAL CALCULATED BALANCE
     pendingTransactions: transactions.filter((t) => t.status === "pending").length,
   }
 
@@ -813,6 +843,9 @@ export default function AdminDashboardPage() {
           <div className="flex justify-between items-center py-4">
             <h1 className="text-2xl font-bold text-gray-900">Admin Dashboard</h1>
             <div className="flex items-center gap-4">
+              <div className="text-sm text-gray-600">
+                Real-time data from {transactions.length} transactions
+              </div>
               <Button onClick={handleExportData} variant="outline">
                 <Download className="w-4 h-4 mr-2" />
                 Export Data
@@ -827,7 +860,7 @@ export default function AdminDashboardPage() {
       </header>
 
       <div className="max-w-7xl mx-auto px-4 sm:px-6 lg:px-8 py-8">
-        {/* Stats Cards */}
+        {/* Stats Cards - NOW USING REAL DATA */}
         <div className="grid grid-cols-1 md:grid-cols-5 gap-6 mb-8">
           <Card>
             <CardContent className="p-6">
@@ -872,6 +905,7 @@ export default function AdminDashboardPage() {
                 <div className="ml-4">
                   <p className="text-sm font-medium text-gray-600">Total Balance</p>
                   <p className="text-2xl font-bold">${stats.totalBalance.toLocaleString()}</p>
+                  <p className="text-xs text-green-600">From transactions</p>
                 </div>
               </div>
             </CardContent>
@@ -902,7 +936,7 @@ export default function AdminDashboardPage() {
               <CardHeader>
                 <CardTitle>User Management</CardTitle>
                 <CardDescription>
-                  Manage user accounts, view details, and perform administrative actions
+                  Manage user accounts, view details, and perform administrative actions (balances calculated from real transaction data)
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -949,7 +983,7 @@ export default function AdminDashboardPage() {
                   </div>
                 </div>
 
-                {/* Users Table */}
+                {/* Users Table - NOW SHOWING REAL BALANCES */}
                 <div className="overflow-x-auto">
                   <table className="min-w-full divide-y divide-gray-200">
                     <thead className="bg-gray-50">
@@ -967,7 +1001,7 @@ export default function AdminDashboardPage() {
                           Verification
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
-                          Balances
+                          Real Balances
                         </th>
                         <th className="px-6 py-3 text-left text-xs font-medium text-gray-500 uppercase tracking-wider">
                           Last Login
@@ -978,82 +1012,92 @@ export default function AdminDashboardPage() {
                       </tr>
                     </thead>
                     <tbody className="bg-white divide-y divide-gray-200">
-                      {filteredUsers.map((user) => (
-                        <tr key={user.id} className="hover:bg-gray-50">
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div>
-                              <div className="text-sm font-medium text-gray-900">
-                                {user.firstName} {user.lastName}
+                      {filteredUsers.map((user) => {
+                        const realBalance = getRealUserBalance(user.id)
+                        return (
+                          <tr key={user.id} className="hover:bg-gray-50">
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div>
+                                <div className="text-sm font-medium text-gray-900">
+                                  {user.firstName} {user.lastName}
+                                </div>
+                                <div className="text-sm text-gray-500">Account: {user.accountNumber}</div>
                               </div>
-                              <div className="text-sm text-gray-500">Account: {user.accountNumber}</div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm text-gray-900 flex items-center">
-                              <Mail className="w-4 h-4 mr-1" />
-                              {user.email}
-                            </div>
-                            <div className="text-sm text-gray-500 flex items-center">
-                              <Phone className="w-4 h-4 mr-1" />
-                              {user.phone}
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {getStatusBadge(user.accountStatus || "pending")}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            {getVerificationBadge(user.verificationStatus || "pending")}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap">
-                            <div className="text-sm">
-                              <div>Checking: ${user.checkingBalance.toLocaleString()}</div>
-                              <div>Savings: ${user.savingsBalance.toLocaleString()}</div>
-                            </div>
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                            {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : "Never"}
-                          </td>
-                          <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
-                            <div className="flex gap-2">
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setSelectedUser(user)
-                                  setEditUserData(user)
-                                  setIsEditUserDialogOpen(true)
-                                }}
-                              >
-                                <Edit className="w-4 h-4" />
-                              </Button>
-                              <Button
-                                size="sm"
-                                variant="outline"
-                                onClick={() => {
-                                  setAccountAction({ type: "lock", user })
-                                  setIsAccountActionDialogOpen(true)
-                                }}
-                                disabled={user.accountStatus === "locked"}
-                              >
-                                <Lock className="w-4 h-4" />
-                              </Button>
-                              {user.accountStatus === "pending" && (
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm text-gray-900 flex items-center">
+                                <Mail className="w-4 h-4 mr-1" />
+                                {user.email}
+                              </div>
+                              <div className="text-sm text-gray-500 flex items-center">
+                                <Phone className="w-4 h-4 mr-1" />
+                                {user.phone}
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {getStatusBadge(user.accountStatus || "pending")}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              {getVerificationBadge(user.verificationStatus || "pending")}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap">
+                              <div className="text-sm">
+                                <div className="font-medium">
+                                  Checking: <span className="text-green-600">${realBalance.checkingBalance.toLocaleString()}</span>
+                                </div>
+                                <div className="font-medium">
+                                  Savings: <span className="text-green-600">${realBalance.savingsBalance.toLocaleString()}</span>
+                                </div>
+                                <div className="text-xs text-gray-500 mt-1">
+                                  From {transactions.filter(t => t.userId === user.id).length} transactions
+                                </div>
+                              </div>
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
+                              {user.lastLogin ? new Date(user.lastLogin).toLocaleDateString() : "Never"}
+                            </td>
+                            <td className="px-6 py-4 whitespace-nowrap text-sm font-medium">
+                              <div className="flex gap-2">
                                 <Button
                                   size="sm"
                                   variant="outline"
                                   onClick={() => {
-                                    setAccountAction({ type: "verify", user })
+                                    setSelectedUser(user)
+                                    setEditUserData(user)
+                                    setIsEditUserDialogOpen(true)
+                                  }}
+                                >
+                                  <Edit className="w-4 h-4" />
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  onClick={() => {
+                                    setAccountAction({ type: "lock", user })
                                     setIsAccountActionDialogOpen(true)
                                   }}
-                                  className="bg-green-50 text-green-700 hover:bg-green-100"
+                                  disabled={user.accountStatus === "locked"}
                                 >
-                                  <CheckCircle className="w-4 h-4" />
+                                  <Lock className="w-4 h-4" />
                                 </Button>
-                              )}
-                            </div>
-                          </td>
-                        </tr>
-                      ))}
+                                {user.accountStatus === "pending" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    onClick={() => {
+                                      setAccountAction({ type: "verify", user })
+                                      setIsAccountActionDialogOpen(true)
+                                    }}
+                                    className="bg-green-50 text-green-700 hover:bg-green-100"
+                                  >
+                                    <CheckCircle className="w-4 h-4" />
+                                  </Button>
+                                )}
+                              </div>
+                            </td>
+                          </tr>
+                        )
+                      })}
                     </tbody>
                   </table>
                 </div>
@@ -1183,7 +1227,7 @@ export default function AdminDashboardPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Balance Management</CardTitle>
-                  <CardDescription>Update user account balances (creates transaction via API)</CardDescription>
+                  <CardDescription>Update user account balances (creates transaction via API and recalculates real balances)</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Dialog open={isBalanceDialogOpen} onOpenChange={setIsBalanceDialogOpen}>
@@ -1196,7 +1240,7 @@ export default function AdminDashboardPage() {
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Update User Balance</DialogTitle>
-                        <DialogDescription>Make adjustments to a user's account balance (will create transaction record via API)</DialogDescription>
+                        <DialogDescription>Make adjustments to a user's account balance (creates transaction record via API and recalculates balances)</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
                         <div>
@@ -1209,11 +1253,14 @@ export default function AdminDashboardPage() {
                               <SelectValue placeholder="Choose a user" />
                             </SelectTrigger>
                             <SelectContent>
-                              {users.map((user) => (
-                                <SelectItem key={user.id} value={user.id}>
-                                  {user.firstName} {user.lastName} - {user.accountNumber}
-                                </SelectItem>
-                              ))}
+                              {users.map((user) => {
+                                const balance = getRealUserBalance(user.id)
+                                return (
+                                  <SelectItem key={user.id} value={user.id}>
+                                    {user.firstName} {user.lastName} - {user.accountNumber} (C: ${balance.checkingBalance.toFixed(2)}, S: ${balance.savingsBalance.toFixed(2)})
+                                  </SelectItem>
+                                )
+                              })}
                             </SelectContent>
                           </Select>
                         </div>
@@ -1248,7 +1295,7 @@ export default function AdminDashboardPage() {
                             <SelectContent>
                               <SelectItem value="add">Add Amount</SelectItem>
                               <SelectItem value="subtract">Subtract Amount</SelectItem>
-                              <SelectItem value="set">Set Balance</SelectItem>
+                              <SelectItem value="set">Set Balance (via transaction)</SelectItem>
                             </SelectContent>
                           </Select>
                         </div>
@@ -1292,7 +1339,7 @@ export default function AdminDashboardPage() {
               <Card>
                 <CardHeader>
                   <CardTitle>Transfer Funds</CardTitle>
-                  <CardDescription>Transfer money between user accounts (creates transaction records via API)</CardDescription>
+                  <CardDescription>Transfer money between user accounts (uses real balances and creates transaction records via API)</CardDescription>
                 </CardHeader>
                 <CardContent>
                   <Dialog open={isTransferDialogOpen} onOpenChange={setIsTransferDialogOpen}>
@@ -1305,7 +1352,7 @@ export default function AdminDashboardPage() {
                     <DialogContent>
                       <DialogHeader>
                         <DialogTitle>Transfer Funds</DialogTitle>
-                        <DialogDescription>Transfer money from one user account to another (will create transaction records via API)</DialogDescription>
+                        <DialogDescription>Transfer money from one user account to another (validates against real balances and creates transaction records via API)</DialogDescription>
                       </DialogHeader>
                       <div className="space-y-4">
                         <div>
@@ -1318,11 +1365,14 @@ export default function AdminDashboardPage() {
                               <SelectValue placeholder="Choose sender" />
                             </SelectTrigger>
                             <SelectContent>
-                              {users.map((user) => (
-                                <SelectItem key={user.id} value={user.id}>
-                                  {user.firstName} {user.lastName} - {user.accountNumber}
-                                </SelectItem>
-                              ))}
+                              {users.map((user) => {
+                                const balance = getRealUserBalance(user.id)
+                                return (
+                                  <SelectItem key={user.id} value={user.id}>
+                                    {user.firstName} {user.lastName} - {user.accountNumber} (C: ${balance.checkingBalance.toFixed(2)}, S: ${balance.savingsBalance.toFixed(2)})
+                                  </SelectItem>
+                                )
+                              })}
                             </SelectContent>
                           </Select>
                         </div>
@@ -1353,11 +1403,14 @@ export default function AdminDashboardPage() {
                               <SelectValue placeholder="Choose recipient" />
                             </SelectTrigger>
                             <SelectContent>
-                              {users.map((user) => (
-                                <SelectItem key={user.id} value={user.id}>
-                                  {user.firstName} {user.lastName} - {user.accountNumber}
-                                </SelectItem>
-                              ))}
+                              {users.map((user) => {
+                                const balance = getRealUserBalance(user.id)
+                                return (
+                                  <SelectItem key={user.id} value={user.id}>
+                                    {user.firstName} {user.lastName} - {user.accountNumber} (C: ${balance.checkingBalance.toFixed(2)}, S: ${balance.savingsBalance.toFixed(2)})
+                                  </SelectItem>
+                                )
+                              })}
                             </SelectContent>
                           </Select>
                         </div>
