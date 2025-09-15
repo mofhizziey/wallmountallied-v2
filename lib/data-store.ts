@@ -348,31 +348,38 @@ export class DataStore {
     }
   }
 
-  // NEW: Update user - FIXED: Changed from PUT to PATCH
-  async updateUser(userId: string, updateData: Partial<User>): Promise<User | null> {
-    try {
-      const response = await fetch(`${this.baseUrl}/api/admin/users/${userId}`, {
-        method: 'PATCH', // Changed from PUT to PATCH
-        headers: {
-          'Content-Type': 'application/json',
-        },
-        body: JSON.stringify(updateData),
-      });
+// Replace your existing updateUser method with this version that directly updates users.json
+async updateUser(userId: string, updateData: Partial<User>): Promise<User | null> {
+  try {
+    console.log(`[DataStore] Updating users.json for user ${userId}:`, updateData);
+    
+    const response = await fetch(`${this.baseUrl}/api/admin/update-users-json`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+      },
+      body: JSON.stringify({ userId, updateData }),
+    });
 
-      const data = await response.json();
+    const data = await response.json();
 
-      if (!response.ok) {
-        console.error('Failed to update user:', data.error);
+    if (response.ok) {
+      if (data.success && data.user) {
+        console.log('[DataStore] users.json updated successfully:', data.user);
+        return data.user;
+      } else {
+        console.error('[DataStore] API response missing user data:', data);
         return null;
       }
-
-      return data.user || null;
-    } catch (error) {
-      console.error('Error updating user:', error);
+    } else {
+      console.error('[DataStore] Failed to update users.json:', data.error || 'Unknown error');
       return null;
     }
+  } catch (error) {
+    console.error('[DataStore] Error updating users.json:', error);
+    return null;
   }
-
+}
   // NEW: Lock user account
   async lockUserAccount(userId: string, reason: string): Promise<User | null> {
     return this.updateUser(userId, {

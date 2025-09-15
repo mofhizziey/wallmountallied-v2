@@ -80,5 +80,123 @@
     "category": "transfer",
     "date": "2025-09-07T18:11:30.564Z",
     "status": "completed"
+  },
+  {
+    "id": "mfco9x5oguh0tge582o",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "transfer",
+    "amount": 12000,
+    "description": "Transfer from checking to savings",
+    "category": "transfer",
+    "date": "2025-09-09T14:55:12.924Z",
+    "status": "completed"
+  },
+  {
+    "id": "mfg0edcf5r77q01r2rq",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Account verification bonus - Initial deposit by Admin: verified",
+    "date": "2025-09-11T22:57:54.447Z",
+    "category": "Account Setup",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mfg0ee71zgmwzppsr5",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Account verification bonus - Initial deposit by Admin: verified",
+    "date": "2025-09-11T22:57:55.549Z",
+    "category": "Account Setup",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mfg0r32fme6vuee8sz",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Account verification bonus - Initial deposit by Admin: Verified",
+    "date": "2025-09-11T23:07:47.655Z",
+    "category": "Account Setup",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mfg0vcfy4bz26vt0n7w",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Account verification bonus - Initial deposit by Admin: verify",
+    "date": "2025-09-11T23:11:06.430Z",
+    "category": "Account Setup",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mfg0zs69bgd0lfzsjkc",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Account verification bonus - Initial deposit by Admin: verify",
+    "date": "2025-09-11T23:14:33.442Z",
+    "category": "Account Setup",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mfg11iv2r6bjkgn5bd",
+    "userId": "mf9vwbnpllzdq8r2av",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Account verification bonus - Initial deposit by Admin: dww",
+    "date": "2025-09-11T23:15:54.686Z",
+    "category": "Account Setup",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mfg1kcyu6liitvp4dgs",
+    "userId": "mf9vpy2xj5i7cuhmck",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Account verification bonus - Initial deposit by Admin: vgvg",
+    "date": "2025-09-11T23:30:33.510Z",
+    "category": "Account Setup",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mfg1wtojthwm0ohne5p",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Account verification bonus - Initial deposit by Admin: nkmkm",
+    "date": "2025-09-11T23:40:15.043Z",
+    "category": "Account Setup",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
+  },
+  {
+    "id": "mfg1ztjzd9mlav9yb9h",
+    "userId": "mf9wacrkiycd1cif6df",
+    "type": "credit",
+    "amount": 1000,
+    "description": "Account verification bonus - Initial deposit by Admin:   km",
+    "date": "2025-09-11T23:42:34.848Z",
+    "category": "Account Setup",
+    "status": "completed",
+    "fromAccount": "checking",
+    "createdBy": "admin"
   }
 ]

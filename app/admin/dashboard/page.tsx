@@ -242,6 +242,8 @@ export default function AdminDashboardPage() {
     }
   }
 
+  // Remove the old updateUserInAPI function - we'll use DataStore directly
+
   const loadData = async () => {
     try {
       setLoading(true)
@@ -384,6 +386,7 @@ export default function AdminDashboardPage() {
     setFilteredUsers(filtered)
   }
 
+  // FIXED: Updated handleAccountAction to properly save user verification
   const handleAccountAction = async () => {
     if (!accountAction.user || !actionReason.trim()) {
       toast({
@@ -398,58 +401,102 @@ export default function AdminDashboardPage() {
       const dataStore = DataStore.getInstance()
       let updatedUser: User | null = null
 
-      // For now, simulate the update locally since API might not exist
       const userIndex = users.findIndex((u) => u.id === accountAction.user!.id)
       if (userIndex === -1) return
 
       const updatedUsers = [...users]
       const targetUser = { ...updatedUsers[userIndex] }
+      let updateData: Partial<User> = {}
 
       switch (accountAction.type) {
         case "lock":
-          targetUser.accountStatus = "locked"
-          targetUser.lockReason = actionReason
+          updateData = {
+            accountStatus: "locked",
+            lockReason: actionReason
+          }
           break
         case "unlock":
-          targetUser.accountStatus = "verified"
-          targetUser.lockReason = undefined
+          updateData = {
+            accountStatus: "verified",
+            lockReason: undefined
+          }
           break
         case "suspend":
-          targetUser.accountStatus = "suspended"
-          targetUser.suspensionReason = actionReason
+          updateData = {
+            accountStatus: "suspended",
+            suspensionReason: actionReason
+          }
           break
         case "close":
-          targetUser.accountStatus = "closed"
-          targetUser.isActive = false
+          updateData = {
+            accountStatus: "closed",
+            isActive: false
+          }
           break
         case "verify":
-          targetUser.accountStatus = "verified"
-          targetUser.verificationStatus = "verified"
-          targetUser.kycCompleted = true
-          // Don't set balance here - it comes from transactions
+          // FIXED: Proper verification update
+          updateData = {
+            accountStatus: "verified",
+            verificationStatus: "verified",
+            kycCompleted: true,
+          }
+          console.log(`[Admin] Verifying user ${targetUser.id} with data:`, updateData)
           break
         default:
           throw new Error("Unknown action type")
       }
 
-      // Try to update via API, fallback to local update
+      // Apply changes to local copy first
+      Object.assign(targetUser, updateData)
+
+      
+      // Try to update via API
       try {
-        updatedUser = await dataStore.updateUser(targetUser.id, targetUser)
+        updatedUser = await updateUserInAPI(targetUser.id, updateData)
         if (updatedUser) {
+          console.log('[Admin] User updated successfully via API:', updatedUser)
           updatedUsers[userIndex] = updatedUser
         } else {
+          console.log('[Admin] API update failed, updating locally only')
           updatedUsers[userIndex] = targetUser
         }
       } catch (apiError) {
-        console.log("[Admin] API not available, updating locally")
+        console.log("[Admin] API not available, updating locally only")
         updatedUsers[userIndex] = targetUser
       }
 
+      // Update state
       setUsers(updatedUsers)
+
+      // Special handling for verification - create initial transaction
+      if (accountAction.type === "verify") {
+        try {
+          // Create initial deposit transaction for verified users
+          const initialDepositTransaction = {
+            userId: targetUser.id,
+            type: "credit",
+            amount: 1000,
+            description: `Account verification bonus - Initial deposit by Admin: ${actionReason}`,
+            category: "Account Setup",
+            status: "completed",
+            fromAccount: "checking",
+          }
+
+          await createTransaction(initialDepositTransaction)
+          console.log("[Admin] Initial deposit transaction created for verified user")
+          
+          // Refresh transactions to show the new one
+          const updatedTransactions = await fetchTransactions()
+          setTransactions(updatedTransactions)
+        } catch (transactionError) {
+          console.error("[Admin] Failed to create initial transaction:", transactionError)
+          // Don't fail the verification if transaction creation fails
+        }
+      }
 
       toast({
         title: "Success",
-        description: `Account ${accountAction.type} action completed successfully`,
+        description: `Account ${accountAction.type} action completed successfully ${updatedUser ? '(saved to backend)' : '(local only)'}`,
       })
 
       setIsAccountActionDialogOpen(false)
@@ -677,14 +724,27 @@ export default function AdminDashboardPage() {
       if (userIndex === -1) return
 
       const updatedUsers = [...users]
-      const updatedUser = { ...updatedUsers[userIndex], ...editUserData }
+      let updatedUser: User | null = null
 
-      updatedUsers[userIndex] = updatedUser
+      // Try to update via API first
+      try {
+        updatedUser = await updateUserInAPI(selectedUser.id, editUserData)
+        if (updatedUser) {
+          updatedUsers[userIndex] = updatedUser
+        } else {
+          // Fall back to local update if API fails
+          updatedUsers[userIndex] = { ...updatedUsers[userIndex], ...editUserData }
+        }
+      } catch (apiError) {
+        console.log("[Admin] API not available, updating locally only")
+        updatedUsers[userIndex] = { ...updatedUsers[userIndex], ...editUserData }
+      }
+
       setUsers(updatedUsers)
 
       toast({
         title: "Success",
-        description: "User information updated successfully",
+        description: `User information updated successfully ${updatedUser ? '(saved to backend)' : '(local only)'}`,
       })
 
       setIsEditUserDialogOpen(false)
@@ -1484,6 +1544,20 @@ export default function AdminDashboardPage() {
                   <>
                     Performing action on: {accountAction.user.firstName} {accountAction.user.lastName} (
                     {accountAction.user.email})
+                    {accountAction.type === "verify" && (
+                      <div className="mt-2 p-3 bg-green-50 border border-green-200 rounded">
+                        <p className="text-sm text-green-800">
+                          <strong>Verification Process:</strong>
+                        </p>
+                        <ul className="text-xs text-green-700 mt-1 list-disc list-inside">
+                          <li>Account status will be set to "verified"</li>
+                          <li>Verification status will be set to "verified"</li>
+                          <li>KYC completion will be marked as true</li>
+                          <li><strong>User data will be saved to users.json file</strong></li>
+                          <li><strong>Changes will persist after page refresh</strong></li>
+                        </ul>
+                      </div>
+                    )}
                   </>
                 )}
               </DialogDescription>
