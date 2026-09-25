@@ -1,53 +1,5 @@
-// app/api/transactions/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
-
-const TRANSACTIONS_FILE = path.join(process.cwd(), 'data', 'transactions.json');
-const USERS_FILE = path.join(process.cwd(), 'data', 'users.json');
-
-// Ensure data directory exists
-async function ensureDataDirectory() {
-  const dataDir = path.dirname(TRANSACTIONS_FILE);
-  try {
-    await fs.access(dataDir);
-  } catch {
-    await fs.mkdir(dataDir, { recursive: true });
-  }
-}
-
-// Read transactions from JSON file
-async function readTransactions() {
-  try {
-    await ensureDataDirectory();
-    const data = await fs.readFile(TRANSACTIONS_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    // If file doesn't exist, return empty array
-    return [];
-  }
-}
-
-// Write transactions to JSON file
-async function writeTransactions(transactions: any[]) {
-  await ensureDataDirectory();
-  await fs.writeFile(TRANSACTIONS_FILE, JSON.stringify(transactions, null, 2));
-}
-
-// Read users from JSON file
-async function readUsers() {
-  try {
-    const data = await fs.readFile(USERS_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    return [];
-  }
-}
-
-// Write users to JSON file
-async function writeUsers(users: any[]) {
-  await fs.writeFile(USERS_FILE, JSON.stringify(users, null, 2));
-}
+import { supabase } from '@/lib/supabase';
 
 // Generate unique ID
 function generateId() {
@@ -67,15 +19,33 @@ export async function GET(request: NextRequest) {
       );
     }
 
-    const transactions = await readTransactions();
-    const userTransactions = transactions.filter((txn: any) => txn.userId === userId);
+    const { data: transactions, error } = await supabase
+      .from('transactions')
+      .select('*')
+      .eq('user_id', userId)
+      .order('date', { ascending: false });
 
-    // Sort by date (newest first)
-    userTransactions.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
+    if (error) {
+      console.error('Supabase error fetching transactions:', error);
+      throw new Error(error.message);
+    }
+
+    const mappedTransactions = transactions.map(tx => ({
+      id: tx.id,
+      userId: tx.user_id,
+      type: tx.type,
+      amount: tx.amount,
+      description: tx.description,
+      date: tx.date,
+      category: tx.category,
+      status: tx.status,
+      fromAccount: tx.from_account,
+      toAccount: tx.to_account
+    }));
 
     return NextResponse.json({
       success: true,
-      transactions: userTransactions
+      transactions: mappedTransactions
     });
 
   } catch (error) {
@@ -100,7 +70,6 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Validate transaction type
     if (!['deposit', 'withdrawal', 'transfer', 'payment'].includes(type)) {
       return NextResponse.json(
         { success: false, error: 'Invalid transaction type' },
@@ -108,58 +77,83 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    // Read current data
-    const transactions = await readTransactions();
-    const users = await readUsers();
+    // Get user balance
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('checking_balance')
+      .eq('id', userId)
+      .single();
 
-    // Find user
-    const userIndex = users.findIndex((user: any) => user.id === userId);
-    if (userIndex === -1) {
+    if (userError || !user) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
         { status: 404 }
       );
     }
 
-    const user = users[userIndex];
+    let newBalance = Number(user.checking_balance);
+    const txAmount = parseFloat(amount);
 
-    // Create new transaction
-    const newTransaction = {
-      id: generateId(),
-      userId,
-      type,
-      amount: parseFloat(amount),
-      description: description || '',
-      category: category || 'general',
-      date: new Date().toISOString(),
-      status: 'completed'
-    };
-
-    // Update user balance based on transaction type
     if (type === 'deposit') {
-      user.checkingBalance += newTransaction.amount;
+      newBalance += txAmount;
     } else if (type === 'withdrawal' || type === 'payment') {
-      if (user.checkingBalance < newTransaction.amount) {
+      if (newBalance < txAmount) {
         return NextResponse.json(
           { success: false, error: 'Insufficient funds' },
           { status: 400 }
         );
       }
-      user.checkingBalance -= newTransaction.amount;
+      newBalance -= txAmount;
     }
 
-    // Add transaction and update user
-    transactions.push(newTransaction);
-    users[userIndex] = user;
+    // Insert transaction
+    const newTxId = generateId();
+    const { data: newTx, error: txError } = await supabase
+      .from('transactions')
+      .insert([
+        {
+          id: newTxId,
+          user_id: userId,
+          type: type,
+          amount: txAmount,
+          description: description || '',
+          category: category || 'general',
+          status: 'completed',
+          date: new Date().toISOString()
+        }
+      ])
+      .select()
+      .single();
 
-    // Save to files
-    await writeTransactions(transactions);
-    await writeUsers(users);
+    if (txError) {
+      console.error('Error creating transaction:', txError);
+      throw new Error(txError.message);
+    }
+
+    // Update user balance
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({ checking_balance: newBalance })
+      .eq('id', userId);
+
+    if (updateError) {
+      console.error('Error updating user balance:', updateError);
+      throw new Error(updateError.message);
+    }
 
     return NextResponse.json({
       success: true,
-      transaction: newTransaction,
-      newBalance: user.checkingBalance
+      transaction: {
+        id: newTx.id,
+        userId: newTx.user_id,
+        type: newTx.type,
+        amount: newTx.amount,
+        description: newTx.description,
+        category: newTx.category,
+        date: newTx.date,
+        status: newTx.status
+      },
+      newBalance
     });
 
   } catch (error) {

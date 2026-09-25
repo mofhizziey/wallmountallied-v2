@@ -1,19 +1,5 @@
-// app/api/admin/bills/route.ts
 import { NextRequest, NextResponse } from 'next/server'
-
-interface Bill {
-  id: string;
-  userId: string;
-  company: string;
-  amount: number;
-  dueDate: string;
-  category: string;
-  status: 'pending' | 'paid' | 'overdue';
-  accountNumber?: string;
-  description?: string;
-  createdAt: string;
-  updatedAt: string;
-}
+import { supabase } from '@/lib/supabase';
 
 interface BillStats {
   totalBills: number;
@@ -26,19 +12,11 @@ interface BillStats {
   overdueAmount: number;
   billsByCategory: { [key: string]: number };
   billsByUser: { [key: string]: number };
-  recentActivity: Bill[];
-}
-
-// Get bills data (shared with other routes)
-function getBillsData(): Bill[] {
-  if (typeof global !== 'undefined' && (global as any).billsData) {
-    return (global as any).billsData;
-  }
-  return [];
+  recentActivity: any[];
 }
 
 // Calculate bill statistics
-function calculateBillStats(bills: Bill[]): BillStats {
+function calculateBillStats(bills: any[]): BillStats {
   const stats: BillStats = {
     totalBills: bills.length,
     pendingBills: 0,
@@ -98,10 +76,24 @@ function calculateBillStats(bills: Bill[]): BillStats {
   return stats;
 }
 
+// Map Supabase snake_case to camelCase
+const mapBill = (b: any) => ({
+  id: b.id,
+  userId: b.user_id,
+  company: b.company,
+  amount: b.amount,
+  dueDate: b.due_date,
+  category: b.category,
+  status: b.status,
+  accountNumber: b.account_number,
+  description: b.description,
+  createdAt: b.created_at,
+  updatedAt: b.updated_at
+});
+
 // GET: Get all bills for admin with optional filtering and stats
 export async function GET(request: NextRequest) {
   try {
-    const bills = getBillsData();
     const { searchParams } = new URL(request.url);
     
     const userId = searchParams.get('userId');
@@ -111,44 +103,37 @@ export async function GET(request: NextRequest) {
     const limit = searchParams.get('limit');
     const offset = searchParams.get('offset');
     
-    let filteredBills = [...bills];
+    let query = supabase.from('bills').select('*');
     
-    // Apply filters
-    if (userId) {
-      filteredBills = filteredBills.filter(bill => bill.userId === userId);
-    }
+    if (userId) query = query.eq('user_id', userId);
+    if (status && ['pending', 'paid', 'overdue'].includes(status)) query = query.eq('status', status);
+    if (category) query = query.ilike('category', `%${category}%`);
     
-    if (status && ['pending', 'paid', 'overdue'].includes(status)) {
-      filteredBills = filteredBills.filter(bill => bill.status === status);
-    }
-    
-    if (category) {
-      filteredBills = filteredBills.filter(bill => 
-        bill.category.toLowerCase().includes(category.toLowerCase())
-      );
-    }
-    
-    // Sort by most recent first
-    filteredBills.sort((a, b) => new Date(b.updatedAt).getTime() - new Date(a.updatedAt).getTime());
-    
-    // Apply pagination if specified
-    const totalCount = filteredBills.length;
+    query = query.order('updated_at', { ascending: false });
+
+    // For stats we need all bills (filtered only by user/status/category but not paginated)
+    const { data: allBills, error } = await query;
+    if (error) throw new Error(error.message);
+
+    const camelBills = (allBills || []).map(mapBill);
+
+    // Apply pagination if specified (in JS since stats need all records anyway)
+    let paginatedBills = [...camelBills];
     if (limit) {
       const limitNum = parseInt(limit);
       const offsetNum = offset ? parseInt(offset) : 0;
-      filteredBills = filteredBills.slice(offsetNum, offsetNum + limitNum);
+      paginatedBills = paginatedBills.slice(offsetNum, offsetNum + limitNum);
     }
     
     const response: any = {
       success: true,
-      bills: filteredBills,
-      count: filteredBills.length,
-      totalCount: totalCount
+      bills: paginatedBills,
+      count: paginatedBills.length,
+      totalCount: camelBills.length
     };
     
-    // Include statistics if requested
     if (includeStats) {
-      response.stats = calculateBillStats(bills);
+      response.stats = calculateBillStats(camelBills);
     }
     
     return NextResponse.json(response);
@@ -165,58 +150,48 @@ export async function GET(request: NextRequest) {
 // POST: Admin create bill for any user
 export async function POST(request: NextRequest) {
   try {
-    const bills = getBillsData();
     const data = await request.json();
     
-    // Validate required fields
     const required = ['userId', 'company', 'amount', 'dueDate', 'category'];
     for (const field of required) {
       if (!data[field]) {
-        return NextResponse.json(
-          { error: `${field} is required` },
-          { status: 400 }
-        );
+        return NextResponse.json({ error: `${field} is required` }, { status: 400 });
       }
     }
     
     if (typeof data.amount !== 'number' || data.amount <= 0) {
-      return NextResponse.json(
-        { error: 'Amount must be a positive number' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Amount must be a positive number' }, { status: 400 });
     }
     
     if (isNaN(new Date(data.dueDate).getTime())) {
-      return NextResponse.json(
-        { error: 'Invalid due date' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'Invalid due date' }, { status: 400 });
     }
     
-    const newBill: Bill = {
-      id: `bill-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`,
-      userId: data.userId,
-      company: data.company,
-      amount: data.amount,
-      dueDate: data.dueDate,
-      category: data.category,
-      status: data.status || 'pending',
-      accountNumber: data.accountNumber,
-      description: data.description,
-      createdAt: new Date().toISOString(),
-      updatedAt: new Date().toISOString(),
-    };
+    const newId = `bill-${Date.now()}-${Math.random().toString(36).substr(2, 9)}`;
     
-    bills.push(newBill);
-    
-    // Update global data
-    if (typeof global !== 'undefined') {
-      (global as any).billsData = bills;
-    }
+    const { data: inserted, error } = await supabase
+      .from('bills')
+      .insert({
+        id: newId,
+        user_id: data.userId,
+        company: data.company,
+        amount: data.amount,
+        due_date: data.dueDate,
+        category: data.category,
+        status: data.status || 'pending',
+        account_number: data.accountNumber,
+        description: data.description,
+        created_at: new Date().toISOString(),
+        updated_at: new Date().toISOString()
+      })
+      .select()
+      .single();
+      
+    if (error) throw new Error(error.message);
     
     return NextResponse.json({
       success: true,
-      bill: newBill,
+      bill: mapBill(inserted),
       message: 'Bill created successfully by admin'
     }, { status: 201 });
     
@@ -232,53 +207,40 @@ export async function POST(request: NextRequest) {
 // PUT: Admin bulk update bills
 export async function PUT(request: NextRequest) {
   try {
-    const bills = getBillsData();
     const data = await request.json();
-    
     const { billIds, updateData } = data;
     
     if (!billIds || !Array.isArray(billIds) || billIds.length === 0) {
-      return NextResponse.json(
-        { error: 'billIds array is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'billIds array is required' }, { status: 400 });
     }
-    
     if (!updateData || typeof updateData !== 'object') {
-      return NextResponse.json(
-        { error: 'updateData object is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'updateData object is required' }, { status: 400 });
     }
+
+    const sbUpdate: any = { updated_at: new Date().toISOString() };
+    if (updateData.company) sbUpdate.company = updateData.company;
+    if (updateData.amount) sbUpdate.amount = updateData.amount;
+    if (updateData.dueDate) sbUpdate.due_date = updateData.dueDate;
+    if (updateData.category) sbUpdate.category = updateData.category;
+    if (updateData.status) sbUpdate.status = updateData.status;
+    if (updateData.accountNumber) sbUpdate.account_number = updateData.accountNumber;
+    if (updateData.description) sbUpdate.description = updateData.description;
     
-    const updatedBills: Bill[] = [];
-    const notFoundIds: string[] = [];
+    const { data: updatedBills, error } = await supabase
+      .from('bills')
+      .update(sbUpdate)
+      .in('id', billIds)
+      .select();
+
+    if (error) throw new Error(error.message);
     
-    billIds.forEach((billId: string) => {
-      const billIndex = bills.findIndex(b => b.id === billId);
-      
-      if (billIndex === -1) {
-        notFoundIds.push(billId);
-      } else {
-        const updatedBill: Bill = {
-          ...bills[billIndex],
-          ...updateData,
-          updatedAt: new Date().toISOString()
-        };
-        bills[billIndex] = updatedBill;
-        updatedBills.push(updatedBill);
-      }
-    });
-    
-    // Update global data
-    if (typeof global !== 'undefined') {
-      (global as any).billsData = bills;
-    }
+    const foundIds = updatedBills.map(b => b.id);
+    const notFoundIds = billIds.filter(id => !foundIds.includes(id));
     
     return NextResponse.json({
       success: true,
-      updatedBills: updatedBills,
-      notFoundIds: notFoundIds,
+      updatedBills: updatedBills.map(mapBill),
+      notFoundIds,
       message: `${updatedBills.length} bills updated successfully`
     });
     
@@ -294,42 +256,30 @@ export async function PUT(request: NextRequest) {
 // DELETE: Admin bulk delete bills
 export async function DELETE(request: NextRequest) {
   try {
-    const bills = getBillsData();
     const { searchParams } = new URL(request.url);
-    
     const billIdsParam = searchParams.get('billIds');
     
     if (!billIdsParam) {
-      return NextResponse.json(
-        { error: 'billIds parameter is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ error: 'billIds parameter is required' }, { status: 400 });
     }
     
     const billIds = billIdsParam.split(',');
-    const deletedBills: Bill[] = [];
-    const notFoundIds: string[] = [];
     
-    billIds.forEach(billId => {
-      const billIndex = bills.findIndex(b => b.id === billId);
-      
-      if (billIndex === -1) {
-        notFoundIds.push(billId);
-      } else {
-        const deletedBill = bills.splice(billIndex, 1)[0];
-        deletedBills.push(deletedBill);
-      }
-    });
+    const { data: deletedBills, error } = await supabase
+      .from('bills')
+      .delete()
+      .in('id', billIds)
+      .select();
+
+    if (error) throw new Error(error.message);
     
-    // Update global data
-    if (typeof global !== 'undefined') {
-      (global as any).billsData = bills;
-    }
+    const foundIds = deletedBills.map(b => b.id);
+    const notFoundIds = billIds.filter(id => !foundIds.includes(id));
     
     return NextResponse.json({
       success: true,
-      deletedBills: deletedBills,
-      notFoundIds: notFoundIds,
+      deletedBills: deletedBills.map(mapBill),
+      notFoundIds,
       message: `${deletedBills.length} bills deleted successfully`
     });
     

@@ -1,42 +1,27 @@
-// app/api/admin/transactions/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
-
-const TRANSACTIONS_FILE = path.join(process.cwd(), 'data', 'transactions.json');
-
-// Ensure data directory exists
-async function ensureDataDirectory() {
-  const dataDir = path.dirname(TRANSACTIONS_FILE);
-  try {
-    await fs.access(dataDir);
-  } catch {
-    await fs.mkdir(dataDir, { recursive: true });
-  }
-}
-
-// Read transactions from JSON file
-async function readTransactions() {
-  try {
-    await ensureDataDirectory();
-    const data = await fs.readFile(TRANSACTIONS_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    // If file doesn't exist, return empty array
-    return [];
-  }
-}
-
-// Write transactions to JSON file
-async function writeTransactions(transactions: any[]) {
-  await ensureDataDirectory();
-  await fs.writeFile(TRANSACTIONS_FILE, JSON.stringify(transactions, null, 2));
-}
+import { supabase } from '@/lib/supabase';
 
 // Generate unique ID
 function generateId() {
   return Date.now().toString(36) + Math.random().toString(36).substr(2);
 }
+
+// Map Supabase to camelCase
+const mapTx = (tx: any) => ({
+  id: tx.id,
+  userId: tx.user_id,
+  type: tx.type,
+  amount: tx.amount,
+  description: tx.description,
+  date: tx.date,
+  category: tx.category,
+  status: tx.status,
+  fromAccount: tx.from_account,
+  toAccount: tx.to_account,
+  createdBy: tx.created_by,
+  updatedAt: tx.updated_at,
+  updatedBy: tx.updated_by
+});
 
 // GET - Get all transactions for admin dashboard
 export async function GET(request: NextRequest) {
@@ -47,37 +32,28 @@ export async function GET(request: NextRequest) {
     const type = searchParams.get('type');
     const limit = searchParams.get('limit');
 
-    let transactions = await readTransactions();
+    let query = supabase.from('transactions').select('*');
 
-    // Filter by user if specified
-    if (userId) {
-      transactions = transactions.filter((t: any) => t.userId === userId);
-    }
+    if (userId) query = query.eq('user_id', userId);
+    if (status && status !== 'all') query = query.eq('status', status);
+    if (type && type !== 'all') query = query.eq('type', type);
 
-    // Filter by status if specified
-    if (status && status !== 'all') {
-      transactions = transactions.filter((t: any) => t.status === status);
-    }
+    query = query.order('date', { ascending: false });
 
-    // Filter by type if specified
-    if (type && type !== 'all') {
-      transactions = transactions.filter((t: any) => t.type === type);
-    }
-
-    // Sort by date (newest first)
-    transactions.sort((a: any, b: any) => new Date(b.date).getTime() - new Date(a.date).getTime());
-
-    // Apply limit if specified
     if (limit) {
       const limitNum = parseInt(limit);
       if (!isNaN(limitNum) && limitNum > 0) {
-        transactions = transactions.slice(0, limitNum);
+        query = query.limit(limitNum);
       }
     }
 
+    const { data: transactions, error } = await query;
+    
+    if (error) throw new Error(error.message);
+
     return NextResponse.json({
       success: true,
-      transactions: transactions
+      transactions: (transactions || []).map(mapTx)
     });
 
   } catch (error) {
@@ -93,30 +69,31 @@ export async function GET(request: NextRequest) {
 export async function POST(request: NextRequest) {
   try {
     const transactionData = await request.json();
-    const transactions = await readTransactions();
 
-    // Create new transaction
-    const newTransaction = {
-      id: generateId(),
-      userId: transactionData.userId,
-      type: transactionData.type,
-      amount: parseFloat(transactionData.amount),
-      description: transactionData.description || '',
-      date: new Date().toISOString(),
-      category: transactionData.category || 'General',
-      status: transactionData.status || 'completed',
-      fromAccount: transactionData.fromAccount,
-      toAccount: transactionData.toAccount,
-      createdBy: 'admin', // Mark as admin-created
-      ...transactionData // Allow any additional fields
-    };
+    const newTxId = generateId();
+    const { data: newTx, error } = await supabase
+      .from('transactions')
+      .insert({
+        id: newTxId,
+        user_id: transactionData.userId,
+        type: transactionData.type,
+        amount: parseFloat(transactionData.amount),
+        description: transactionData.description || '',
+        category: transactionData.category || 'general',
+        status: transactionData.status || 'completed',
+        date: new Date().toISOString(),
+        from_account: transactionData.fromAccount,
+        to_account: transactionData.toAccount,
+        created_by: 'admin'
+      })
+      .select()
+      .single();
 
-    transactions.push(newTransaction);
-    await writeTransactions(transactions);
+    if (error) throw new Error(error.message);
 
     return NextResponse.json({
       success: true,
-      transaction: newTransaction
+      transaction: mapTx(newTx)
     });
 
   } catch (error) {
@@ -142,29 +119,36 @@ export async function PUT(request: NextRequest) {
     }
 
     const updateData = await request.json();
-    const transactions = await readTransactions();
+    const sbUpdate: any = {
+      updated_at: new Date().toISOString(),
+      updated_by: 'admin'
+    };
+
+    if (updateData.type) sbUpdate.type = updateData.type;
+    if (updateData.amount) sbUpdate.amount = parseFloat(updateData.amount);
+    if (updateData.description !== undefined) sbUpdate.description = updateData.description;
+    if (updateData.category) sbUpdate.category = updateData.category;
+    if (updateData.status) sbUpdate.status = updateData.status;
+    if (updateData.fromAccount !== undefined) sbUpdate.from_account = updateData.fromAccount;
+    if (updateData.toAccount !== undefined) sbUpdate.to_account = updateData.toAccount;
     
-    const transactionIndex = transactions.findIndex((t: any) => t.id === transactionId);
-    if (transactionIndex === -1) {
+    const { data: updatedTx, error } = await supabase
+      .from('transactions')
+      .update(sbUpdate)
+      .eq('id', transactionId)
+      .select()
+      .maybeSingle();
+
+    if (error || !updatedTx) {
       return NextResponse.json(
         { success: false, error: 'Transaction not found' },
         { status: 404 }
       );
     }
 
-    // Update transaction data
-    transactions[transactionIndex] = { 
-      ...transactions[transactionIndex], 
-      ...updateData,
-      updatedAt: new Date().toISOString(),
-      updatedBy: 'admin'
-    };
-    
-    await writeTransactions(transactions);
-
     return NextResponse.json({
       success: true,
-      transaction: transactions[transactionIndex]
+      transaction: mapTx(updatedTx)
     });
 
   } catch (error) {
@@ -189,24 +173,24 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    const transactions = await readTransactions();
-    const transactionIndex = transactions.findIndex((t: any) => t.id === transactionId);
+    const { data: deletedTx, error } = await supabase
+      .from('transactions')
+      .delete()
+      .eq('id', transactionId)
+      .select()
+      .maybeSingle();
     
-    if (transactionIndex === -1) {
+    if (error || !deletedTx) {
       return NextResponse.json(
         { success: false, error: 'Transaction not found' },
         { status: 404 }
       );
     }
 
-    // Remove the transaction
-    const deletedTransaction = transactions.splice(transactionIndex, 1)[0];
-    await writeTransactions(transactions);
-
     return NextResponse.json({
       success: true,
       message: 'Transaction deleted successfully',
-      deletedTransaction: deletedTransaction
+      deletedTransaction: mapTx(deletedTx)
     });
 
   } catch (error) {

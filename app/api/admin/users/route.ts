@@ -1,39 +1,44 @@
-// app/api/admin/users/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
+import { supabase } from '@/lib/supabase';
 
-const DATA_FILE = path.join(process.cwd(), 'data', 'users.json');
+// Map Supabase to camelCase
+const mapUser = (user: any) => ({
+  id: user.id,
+  firstName: user.first_name,
+  lastName: user.last_name,
+  email: user.email,
+  phone: user.phone,
+  dateOfBirth: user.date_of_birth,
+  ssn: user.ssn,
+  address: user.address,
+  city: user.city,
+  state: user.state,
+  zipCode: user.zip_code,
+  pin: user.pin,
+  licenseNumber: user.license_number,
+  licenseState: user.license_state,
+  licenseUrl: user.license_url,
+  accountNumber: user.account_number,
+  checkingBalance: user.checking_balance,
+  savingsBalance: user.savings_balance,
+  createdAt: user.created_at,
+  lastLogin: user.last_login,
+  isActive: user.is_active,
+  accountStatus: user.account_status,
+  verificationStatus: user.verification_status,
+  kycCompleted: user.kyc_completed,
+  loginAttempts: user.login_attempts,
+  lockReason: user.lock_reason,
+  suspensionReason: user.suspension_reason,
+  occupation: user.occupation,
+  monthlyIncome: user.monthly_income,
+  idFrontUrl: user.id_front_url,
+  idBackUrl: user.id_back_url,
+  selfieUrl: user.selfie_url,
+  availableCheckingBalance: user.available_checking_balance,
+  availableSavingsBalance: user.available_savings_balance,
+});
 
-// Ensure data directory exists
-async function ensureDataDirectory() {
-  const dataDir = path.dirname(DATA_FILE);
-  try {
-    await fs.access(dataDir);
-  } catch {
-    await fs.mkdir(dataDir, { recursive: true });
-  }
-}
-
-// Read users from JSON file
-async function readUsers() {
-  try {
-    await ensureDataDirectory();
-    const data = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    // If file doesn't exist, return empty array
-    return [];
-  }
-}
-
-// Write users to JSON file
-async function writeUsers(users: any[]) {
-  await ensureDataDirectory();
-  await fs.writeFile(DATA_FILE, JSON.stringify(users, null, 2));
-}
-
-// GET - Get all users for admin dashboard
 export async function GET(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
@@ -42,116 +47,106 @@ export async function GET(request: NextRequest) {
     const status = searchParams.get('status');
     const verification = searchParams.get('verification');
 
-    const users = await readUsers();
+    let query = supabase.from('users').select('*');
 
-    // If requesting specific user by ID
     if (userId) {
-      const user = users.find((u: any) => u.id === userId);
-      if (!user) {
-        return NextResponse.json(
-          { success: false, error: 'User not found' },
-          { status: 404 }
-        );
+      query = query.eq('id', userId);
+      const { data: user, error } = await query.maybeSingle();
+      
+      if (error || !user) {
+        return NextResponse.json({ success: false, error: 'User not found' }, { status: 404 });
       }
-
-      // Return full user data for admin (including sensitive fields)
-      return NextResponse.json({
-        success: true,
-        user: user
-      });
+      return NextResponse.json({ success: true, user: mapUser(user) });
     }
 
-    // Return all users with admin-level data (but still mask highly sensitive info)
-    let filteredUsers = users.map((user: any) => {
-      const { password, ...adminSafeUser } = user;
-      return {
-        ...adminSafeUser,
-        // Ensure required fields exist with defaults
-        accountStatus: user.accountStatus || 'pending',
-        verificationStatus: user.verificationStatus || 'pending',
-        kycCompleted: user.kycCompleted || false,
-        loginAttempts: user.loginAttempts || 0,
-        availableCheckingBalance: user.availableCheckingBalance ?? user.checkingBalance,
-        availableSavingsBalance: user.availableSavingsBalance ?? user.savingsBalance,
-        occupation: user.occupation || '',
-        monthlyIncome: user.monthlyIncome || 0
-      };
-    });
-
-    // Apply filters if provided
     if (search) {
-      const searchTerm = search.toLowerCase();
-      filteredUsers = filteredUsers.filter((user: any) =>
-        user.firstName?.toLowerCase().includes(searchTerm) ||
-        user.lastName?.toLowerCase().includes(searchTerm) ||
-        user.email?.toLowerCase().includes(searchTerm) ||
-        user.accountNumber?.includes(searchTerm)
-      );
+      query = query.or(`first_name.ilike.%${search}%,last_name.ilike.%${search}%,email.ilike.%${search}%,account_number.ilike.%${search}%`);
     }
 
     if (status && status !== 'all') {
-      filteredUsers = filteredUsers.filter((user: any) => user.accountStatus === status);
+      query = query.eq('account_status', status);
     }
 
     if (verification && verification !== 'all') {
-      filteredUsers = filteredUsers.filter((user: any) => user.verificationStatus === verification);
+      query = query.eq('verification_status', verification);
     }
+
+    const { data: users, error } = await query;
+
+    if (error) throw new Error(error.message);
+
+    const safeUsers = (users || []).map(u => {
+      const user = mapUser(u);
+      return user;
+    });
 
     return NextResponse.json({
       success: true,
-      users: filteredUsers
+      users: safeUsers
     });
 
   } catch (error) {
     console.error('Error fetching users for admin:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to fetch users' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to fetch users' }, { status: 500 });
   }
 }
 
-// PUT - Update user (admin only)
 export async function PUT(request: NextRequest) {
   try {
     const { searchParams } = new URL(request.url);
     const userId = searchParams.get('id');
     
     if (!userId) {
-      return NextResponse.json(
-        { success: false, error: 'User ID is required' },
-        { status: 400 }
-      );
+      return NextResponse.json({ success: false, error: 'User ID is required' }, { status: 400 });
     }
 
     const updateData = await request.json();
-    const users = await readUsers();
+    const sbUpdate: any = {};
     
-    const userIndex = users.findIndex((u: any) => u.id === userId);
-    if (userIndex === -1) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
+    // Map camelCase to snake_case for updates
+    if (updateData.firstName !== undefined) sbUpdate.first_name = updateData.firstName;
+    if (updateData.lastName !== undefined) sbUpdate.last_name = updateData.lastName;
+    if (updateData.email !== undefined) sbUpdate.email = updateData.email;
+    if (updateData.phone !== undefined) sbUpdate.phone = updateData.phone;
+    if (updateData.accountStatus !== undefined) sbUpdate.account_status = updateData.accountStatus;
+    if (updateData.verificationStatus !== undefined) sbUpdate.verification_status = updateData.verificationStatus;
+    if (updateData.isActive !== undefined) sbUpdate.is_active = updateData.isActive;
+    if (updateData.kycCompleted !== undefined) sbUpdate.kyc_completed = updateData.kycCompleted;
+    if (updateData.checkingBalance !== undefined) sbUpdate.checking_balance = updateData.checkingBalance;
+    if (updateData.savingsBalance !== undefined) sbUpdate.savings_balance = updateData.savingsBalance;
+    if (updateData.availableCheckingBalance !== undefined) sbUpdate.available_checking_balance = updateData.availableCheckingBalance;
+    if (updateData.availableSavingsBalance !== undefined) sbUpdate.available_savings_balance = updateData.availableSavingsBalance;
+    if (updateData.lockReason !== undefined) sbUpdate.lock_reason = updateData.lockReason;
+    if (updateData.suspensionReason !== undefined) sbUpdate.suspension_reason = updateData.suspensionReason;
+    
+    const keyMap: Record<string, string> = {
+      dateOfBirth: 'date_of_birth', ssn: 'ssn', address: 'address', city: 'city', state: 'state', zipCode: 'zip_code', pin: 'pin', licenseNumber: 'license_number', licenseState: 'license_state', licenseUrl: 'license_url', accountNumber: 'account_number', loginAttempts: 'login_attempts', occupation: 'occupation', monthlyIncome: 'monthly_income', idFrontUrl: 'id_front_url', idBackUrl: 'id_back_url', selfieUrl: 'selfie_url'
+    };
+    
+    for (const [camel, snake] of Object.entries(keyMap)) {
+      if (updateData[camel] !== undefined) {
+        sbUpdate[snake] = updateData[camel];
+      }
     }
 
-    // Update user data
-    users[userIndex] = { ...users[userIndex], ...updateData };
-    await writeUsers(users);
+    const { data: updatedUser, error } = await supabase
+      .from('users')
+      .update(sbUpdate)
+      .eq('id', userId)
+      .select()
+      .maybeSingle();
 
-    // Return updated user without password
-    const { password, ...safeUser } = users[userIndex];
-    
+    if (error || !updatedUser) {
+      return NextResponse.json({ success: false, error: 'User not found or update failed' }, { status: 404 });
+    }
+
     return NextResponse.json({
       success: true,
-      user: safeUser
+      user: mapUser(updatedUser)
     });
 
   } catch (error) {
     console.error('Error updating user:', error);
-    return NextResponse.json(
-      { success: false, error: 'Failed to update user' },
-      { status: 500 }
-    );
+    return NextResponse.json({ success: false, error: 'Failed to update user' }, { status: 500 });
   }
 }

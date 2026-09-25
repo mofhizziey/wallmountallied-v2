@@ -1,24 +1,5 @@
-// app/api/auth/validate-pin/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'users.json');
-
-// Read users from JSON file
-async function readUsers() {
-  try {
-    const data = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    return [];
-  }
-}
-
-// Write users to JSON file
-async function writeUsers(users: any[]) {
-  await fs.writeFile(DATA_FILE, JSON.stringify(users, null, 2));
-}
+import { supabase } from '@/lib/supabase';
 
 // POST - Validate PIN
 export async function POST(request: NextRequest) {
@@ -32,26 +13,27 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const users = await readUsers();
-    const userIndex = users.findIndex((u: any) => u.id === userId);
+    const { data: user, error } = await supabase
+      .from('users')
+      .select('*')
+      .eq('id', userId)
+      .maybeSingle();
     
-    if (userIndex === -1) {
+    if (error || !user) {
       return NextResponse.json(
         { success: false, error: 'User not found' },
         { status: 404 }
       );
     }
 
-    const user = users[userIndex];
-
-    if (!user.isActive) {
+    if (!user.is_active) {
       return NextResponse.json(
         { success: false, error: 'Account is suspended. Please contact support.' },
         { status: 403 }
       );
     }
 
-    // Validate PIN
+    // Validate PIN (In a real app, PINs should be hashed)
     if (user.pin !== pin) {
       return NextResponse.json(
         { success: false, error: 'Invalid PIN' },
@@ -60,11 +42,35 @@ export async function POST(request: NextRequest) {
     }
 
     // Update last login
-    users[userIndex].lastLogin = new Date().toISOString();
-    await writeUsers(users);
+    await supabase
+      .from('users')
+      .update({ last_login: new Date().toISOString() })
+      .eq('id', userId);
 
-    // Return user without sensitive data
-    const { password, ssn, pin: _, ...safeUser } = users[userIndex];
+    // Map back to camelCase and remove sensitive data
+    const safeUser = {
+      id: user.id,
+      firstName: user.first_name,
+      lastName: user.last_name,
+      email: user.email,
+      phone: user.phone,
+      dateOfBirth: user.date_of_birth,
+      address: user.address,
+      city: user.city,
+      state: user.state,
+      zipCode: user.zip_code,
+      licenseNumber: user.license_number,
+      licenseState: user.license_state,
+      licenseUrl: user.license_url,
+      accountNumber: user.account_number,
+      checkingBalance: user.checking_balance,
+      savingsBalance: user.savings_balance,
+      createdAt: user.created_at,
+      lastLogin: new Date().toISOString(),
+      isActive: user.is_active,
+      accountStatus: user.account_status,
+      verificationStatus: user.verification_status,
+    };
     
     return NextResponse.json({
       success: true,

@@ -1,30 +1,5 @@
-// app/api/debug/route.ts
 import { NextRequest, NextResponse } from 'next/server';
-import { promises as fs } from 'fs';
-import path from 'path';
-
-const DATA_FILE = path.join(process.cwd(), 'data', 'users.json');
-
-// Read users from JSON file
-async function readUsers() {
-  try {
-    const data = await fs.readFile(DATA_FILE, 'utf8');
-    return JSON.parse(data);
-  } catch (error) {
-    return [];
-  }
-}
-
-// Write users to JSON file
-async function writeUsers(users: any[]) {
-  const dataDir = path.dirname(DATA_FILE);
-  try {
-    await fs.access(dataDir);
-  } catch {
-    await fs.mkdir(dataDir, { recursive: true });
-  }
-  await fs.writeFile(DATA_FILE, JSON.stringify(users, null, 2));
-}
+import { supabase } from '@/lib/supabase';
 
 // GET - Get debug statistics
 export async function GET(request: NextRequest) {
@@ -33,39 +8,36 @@ export async function GET(request: NextRequest) {
     const action = searchParams.get('action');
 
     if (action === 'stats') {
-      const users = await readUsers();
+      const [{ data: users, error: usersErr }, { data: admins, error: adminsErr }, { count: txCount }] = await Promise.all([
+        supabase.from('users').select('*'),
+        supabase.from('admins').select('*'),
+        supabase.from('transactions').select('*', { count: 'exact', head: true })
+      ]);
       
-      // Calculate storage size
-      let storageSize = 0;
-      try {
-        const stats = await fs.stat(DATA_FILE);
-        storageSize = stats.size;
-      } catch {
-        storageSize = 0;
-      }
+      if (usersErr) throw new Error(usersErr.message);
+
+      const safeUsers = users || [];
 
       // Calculate stats
       const stats = {
-        version: '1.0.0',
-        totalUsers: users.length,
-        totalTransactions: users.reduce((total: number, user: any) => {
-          // You can add transaction counting logic here if you have transactions
-          return total + (user.transactions?.length || 0);
-        }, 0),
-        totalAdmins: users.filter((user: any) => user.isAdmin).length,
-        storageSize,
+        version: '1.0.0 (Supabase)',
+        totalUsers: safeUsers.length,
+        totalTransactions: txCount || 0,
+        totalAdmins: (admins || []).length,
+        storageSize: 'N/A (Managed by Supabase)',
         lastUpdated: new Date().toISOString(),
-        activeUsers: users.filter((user: any) => user.isActive).length,
-        inactiveUsers: users.filter((user: any) => !user.isActive).length
+        activeUsers: safeUsers.filter((user: any) => user.is_active).length,
+        inactiveUsers: safeUsers.filter((user: any) => !user.is_active).length
       };
 
       return NextResponse.json({ success: true, stats });
 
     } else if (action === 'export') {
-      const users = await readUsers();
+      const { data: users, error } = await supabase.from('users').select('*');
+      if (error) throw new Error(error.message);
       
       // Remove sensitive data for export
-      const exportData = users.map((user: any) => {
+      const exportData = (users || []).map((user: any) => {
         const { password, ssn, pin, ...safeUser } = user;
         return safeUser;
       });
@@ -74,7 +46,7 @@ export async function GET(request: NextRequest) {
         success: true, 
         data: {
           exportDate: new Date().toISOString(),
-          version: '1.0.0',
+          version: '1.0.0 (Supabase)',
           users: exportData
         }
       });
@@ -108,8 +80,13 @@ export async function DELETE(request: NextRequest) {
       );
     }
 
-    // Clear the users file
-    await writeUsers([]);
+    // In a real database, you might not want to let the debug route drop everything, 
+    // but for parity with the old fs behavior:
+    await Promise.all([
+      supabase.from('users').delete().neq('id', '0'), // delete all
+      supabase.from('transactions').delete().neq('id', '0'),
+      supabase.from('bills').delete().neq('id', '0')
+    ]);
 
     return NextResponse.json({ 
       success: true, 
