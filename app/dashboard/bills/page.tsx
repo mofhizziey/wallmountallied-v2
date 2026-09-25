@@ -45,31 +45,32 @@ export default function BillsPage() {
       return
     }
 
-    const dataStore = DataStore.getInstance()
-    const user = dataStore.getUserById(currentUserId)
-
-    if (!user) {
-      router.push("/login")
-      return
-    }
-
-    // Condition to prevent actions if account is suspended or locked
-    if (user.accountStatus === "suspended" || user.accountStatus === "locked") {
-      localStorage.removeItem("isAuthenticated")
-      localStorage.removeItem("currentUserId")
-      toast({
-        title: "Account Restricted",
-        description: `Your account has been ${user.accountStatus}. Please contact support.`,
-        variant: "destructive",
+    fetch(`/api/users/${currentUserId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success || !data.user) {
+          router.push("/login")
+          return
+        }
+        const user = data.user
+        if (user.accountStatus === "suspended" || user.accountStatus === "locked") {
+          localStorage.removeItem("isAuthenticated")
+          localStorage.removeItem("currentUserId")
+          toast({
+            title: "Account Restricted",
+            description: `Your account has been ${user.accountStatus}. Please contact support.`,
+            variant: "destructive",
+          })
+          router.push("/login")
+          return
+        }
+        setUserData(user)
+        // Fetch bills from API for the current user
+        const dataStore = DataStore.getInstance()
+        const userBills = dataStore?.getBillsByUserId(currentUserId)
+        setBills(userBills)
       })
-      router.push("/login")
-      return
-    }
-
-    setUserData(user)
-    // Fetch bills from DataStore for the current user
-    const userBills = dataStore?.getBillsByUserId(currentUserId)
-    setBills(userBills)
+      .catch(() => router.push("/login"))
   }, [router, toast])
 
   const handlePayBill = async (e: React.FormEvent) => {
@@ -231,7 +232,7 @@ export default function BillsPage() {
     )
   }
 
-  const isAccountRestricted = userData.accountStatus !== "verified" || userData.availableCheckingBalance === 0
+  const isAccountRestricted = userData.accountStatus !== "verified"
 
   const pendingBills = bills?.[0]?.filter((bill) => bill.status === "pending")
   const paidBills = bills?.[0]?.filter((bill) => bill.status === "paid")

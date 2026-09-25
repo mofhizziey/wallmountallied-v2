@@ -26,37 +26,43 @@ export default function TransferPage() {
     transferType: "internal",
   })
 
+  const [loading, setLoading] = useState(true)
+
   useEffect(() => {
     const isAuthenticated = localStorage.getItem("isAuthenticated")
-    const currentUserId = localStorage.getItem("currentUserId") // Get current user ID
+    const currentUserId = localStorage.getItem("currentUserId")
 
     if (!isAuthenticated || !currentUserId) {
       router.push("/login")
       return
     }
 
-    const dataStore = DataStore.getInstance()
-    const user = dataStore.getUserById(currentUserId) // Fetch user data from DataStore
-
-    if (!user) {
-      router.push("/login")
-      return
-    }
-
-    // Condition to prevent actions if account is suspended or locked
-    if (user.accountStatus === "suspended" || user.accountStatus === "locked") {
-      localStorage.removeItem("isAuthenticated")
-      localStorage.removeItem("currentUserId")
-      toast({
-        title: "Account Restricted",
-        description: `Your account has been ${user.accountStatus}. Please contact support.`,
-        variant: "destructive",
+    // Fetch fresh user data from the API (not the stale sync version)
+    fetch(`/api/users/${currentUserId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success || !data.user) {
+          router.push("/login")
+          return
+        }
+        const user = data.user
+        if (user.accountStatus === "suspended" || user.accountStatus === "locked") {
+          localStorage.removeItem("isAuthenticated")
+          localStorage.removeItem("currentUserId")
+          toast({
+            title: "Account Restricted",
+            description: `Your account has been ${user.accountStatus}. Please contact support.`,
+            variant: "destructive",
+          })
+          router.push("/login")
+          return
+        }
+        setUserData(user)
+        setLoading(false)
       })
-      router.push("/login")
-      return
-    }
-
-    setUserData(user)
+      .catch(() => {
+        router.push("/login")
+      })
   }, [router, toast])
 
   const handleTransfer = async (e: React.FormEvent) => {
@@ -90,111 +96,108 @@ export default function TransferPage() {
       return
     }
 
-    const dataStore = DataStore.getInstance()
-    const fromUser = userData // The current logged-in user
-    let fromBalance: number
-    let fromAvailableBalance: number
-    let toBalance: number
-    let toAvailableBalance: number
+    // Always re-fetch user to get up-to-date balances before processing
+    const freshRes = await fetch(`/api/users/${userData.id}`)
+    const freshData = await freshRes.json()
+    const fromUser: User = freshData.user || userData
 
+    let fromBalance: number
     if (transferData.fromAccount === "checking") {
       fromBalance = fromUser.checkingBalance
-      fromAvailableBalance = fromUser.availableCheckingBalance
     } else {
       fromBalance = fromUser.savingsBalance
-      fromAvailableBalance = fromUser.availableSavingsBalance
     }
 
-    // Check if user has sufficient available funds
-    if (fromAvailableBalance < amount) {
+    // Enforce: cannot transfer more than what's in the account
+    if (amount > fromBalance) {
       toast({
         title: "Insufficient Funds",
-        description: `You only have ${formatCurrency(fromAvailableBalance)} available in your ${transferData.fromAccount} account.`,
+        description: `You only have ${formatCurrency(fromBalance)} available in your ${transferData.fromAccount} account.`,
         variant: "destructive",
       })
       return
     }
 
-    // Prepare updates for the sender
-    const updatedFromUser: Partial<User> = { ...fromUser }
-    if (transferData.fromAccount === "checking") {
-      updatedFromUser.checkingBalance = fromBalance - amount
-      updatedFromUser.availableCheckingBalance = fromAvailableBalance - amount
-    } else {
-      updatedFromUser.savingsBalance = fromBalance - amount
-      updatedFromUser.availableSavingsBalance = fromAvailableBalance - amount
-    }
+    try {
+      // Calculate new balances
+      let newCheckingBalance = fromUser.checkingBalance
+      let newSavingsBalance = fromUser.savingsBalance
 
-    let toUser: User | undefined // For internal transfers, this is still the same user
-    let toAccountType: "checking" | "savings" | undefined
+      if (transferData.transferType === "internal") {
+        // Deduct from source
+        if (transferData.fromAccount === "checking") {
+          newCheckingBalance -= amount
+        } else {
+          newSavingsBalance -= amount
+        }
+        // Add to destination
+        const toAccount = transferData.toAccount as "checking" | "savings"
+        if (toAccount === "checking") {
+          newCheckingBalance += amount
+        } else {
+          newSavingsBalance += amount
+        }
 
-    if (transferData.transferType === "internal") {
-      toUser = fromUser // Internal transfer is to the same user
-      toAccountType = transferData.toAccount as "checking" | "savings"
-
-      if (toAccountType === "checking") {
-        toBalance = toUser.checkingBalance
-        toAvailableBalance = toUser.availableCheckingBalance
+        // Save both transactions
+        await Promise.all([
+          fetch('/api/admin/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: fromUser.id,
+              type: 'debit',
+              amount,
+              description: `Internal transfer to ${toAccount} account: ${transferData.memo || 'No memo'}`,
+              category: 'Transfer',
+              fromAccount: transferData.fromAccount,
+            }),
+          }),
+          fetch('/api/admin/transactions', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+              userId: fromUser.id,
+              type: 'credit',
+              amount,
+              description: `Internal transfer from ${transferData.fromAccount} account: ${transferData.memo || 'No memo'}`,
+              category: 'Transfer',
+              fromAccount: toAccount,
+            }),
+          }),
+        ])
       } else {
-        toBalance = toUser.savingsBalance
-        toAvailableBalance = toUser.savingsBalance
+        // External / Wire: just debit the sender
+        if (transferData.fromAccount === "checking") {
+          newCheckingBalance -= amount
+        } else {
+          newSavingsBalance -= amount
+        }
+
+        await fetch('/api/admin/transactions', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            userId: fromUser.id,
+            type: 'debit',
+            amount,
+            description: `${transferData.transferType} transfer to ${transferData.toAccount}: ${transferData.memo || 'No memo'}`,
+            category: 'External Transfer',
+            fromAccount: transferData.fromAccount,
+          }),
+        })
       }
 
-      // Prepare updates for the receiver (same user, different account)
-      if (toAccountType === "checking") {
-        updatedFromUser.checkingBalance = (updatedFromUser.checkingBalance || 0) + amount
-        updatedFromUser.availableCheckingBalance = (updatedFromUser.availableCheckingBalance || 0) + amount
-      } else {
-        updatedFromUser.savingsBalance = (updatedFromUser.savingsBalance || 0) + amount
-        updatedFromUser.availableSavingsBalance = (updatedFromUser.availableSavingsBalance || 0) + amount
+      // Refresh user from DB and update UI
+      const updatedRes = await fetch(`/api/users/${fromUser.id}`)
+      const updatedData = await updatedRes.json()
+      if (updatedData.success) {
+        setUserData(updatedData.user)
       }
 
-      // Create debit transaction for sender
-      await dataStore.createTransaction({
-        userId: fromUser.id,
-        type: "debit",
-        amount: amount,
-        description: `Internal transfer to ${toAccountType} account: ${transferData.memo || "No memo"}`,
-        category: "Transfer",
-        fromAccount: transferData.fromAccount as "checking" | "savings",
-        toAccount: toAccountType,
-      })
-
-      // Create credit transaction for receiver (same user)
-      await dataStore.createTransaction({
-        userId: fromUser.id,
-        type: "credit",
-        amount: amount,
-        description: `Internal transfer from ${transferData.fromAccount} account: ${transferData.memo || "No memo"}`,
-        category: "Transfer",
-        fromAccount: toAccountType,
-        toAccount: transferData.fromAccount as "checking" | "savings",
-      })
-    } else {
-      // External or Wire Transfer: Only debit the current user
-      // In a real app, external transfers would involve looking up recipient or external APIs
-      // For this demo, we just debit the sender and record a transaction.
-      await dataStore.createTransaction({
-        userId: fromUser.id,
-        type: "debit",
-        amount: amount,
-        description: `${transferData.transferType} transfer to ${transferData.toAccount}: ${transferData.memo || "No memo"}`,
-        category: "External Transfer",
-        fromAccount: transferData.fromAccount as "checking" | "savings",
-        toAccount: transferData.toAccount,
-      })
-    }
-
-    // Update the user in the DataStore
-    const result = await dataStore.updateUser(fromUser.id, updatedFromUser)
-
-    if (result) {
-      setUserData(result) // Update local state with the new user data
       toast({
         title: "Transfer Successful!",
-        description: `$${amount.toFixed(2)} has been transferred successfully.`,
+        description: `${formatCurrency(amount)} has been transferred successfully.`,
       })
-      // Reset form
       setTransferData({
         fromAccount: "",
         toAccount: "",
@@ -202,7 +205,8 @@ export default function TransferPage() {
         memo: "",
         transferType: "internal",
       })
-    } else {
+    } catch (err) {
+      console.error('Transfer error:', err)
       toast({
         title: "Transfer Failed",
         description: "An error occurred during the transfer. Please try again.",
@@ -222,7 +226,7 @@ export default function TransferPage() {
     )
   }
 
-  const isAccountRestricted = userData.accountStatus !== "verified" || userData.availableCheckingBalance === 0
+  const isAccountRestricted = userData.accountStatus !== "verified"
 
   const formatCurrency = (amount: number) => {
     return new Intl.NumberFormat("en-US", {

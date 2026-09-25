@@ -27,15 +27,16 @@ export default function AccountsPage() {
       return
     }
 
-    const dataStore = DataStore.getInstance()
-    const user = dataStore.getUserById(currentUserId)
-
-    if (!user) {
-      router.push("/login")
-      return
-    }
-
-    setUserData(user)
+    fetch(`/api/users/${currentUserId}`)
+      .then((res) => res.json())
+      .then((data) => {
+        if (!data.success || !data.user) {
+          router.push("/login")
+          return
+        }
+        setUserData(data.user)
+      })
+      .catch(() => router.push("/login"))
   }, [router])
 
   const formatCurrency = (amount: number) => {

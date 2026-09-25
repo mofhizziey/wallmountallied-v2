@@ -353,19 +353,19 @@ async updateUser(userId: string, updateData: Partial<User>): Promise<User | null
   try {
     console.log(`[DataStore] Updating users.json for user ${userId}:`, updateData);
     
-    const response = await fetch(`${this.baseUrl}/api/admin/update-users-json`, {
-      method: 'POST',
+    const response = await fetch(`${this.baseUrl}/api/users/${userId}`, {
+      method: 'PUT',
       headers: {
         'Content-Type': 'application/json',
       },
-      body: JSON.stringify({ userId, updateData }),
+      body: JSON.stringify(updateData),
     });
 
     const data = await response.json();
 
     if (response.ok) {
       if (data.success && data.user) {
-        console.log('[DataStore] users.json updated successfully:', data.user);
+        console.log('[DataStore] Database updated successfully:', data.user);
         return data.user;
       } else {
         console.error('[DataStore] API response missing user data:', data);

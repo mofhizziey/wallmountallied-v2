@@ -106,6 +106,14 @@ export async function PATCH(
   }
 }
 
+// PUT is an alias for PATCH - allows full or partial updates
+export async function PUT(
+  request: NextRequest,
+  { params }: { params: { userId: string } }
+) {
+  return PATCH(request, { params });
+}
+
 export async function DELETE(
   request: NextRequest,
   { params }: { params: { userId: string } }

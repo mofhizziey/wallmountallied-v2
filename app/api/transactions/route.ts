@@ -70,41 +70,14 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    if (!['deposit', 'withdrawal', 'transfer', 'payment'].includes(type)) {
+    if (!['deposit', 'withdrawal', 'transfer', 'payment', 'credit', 'debit'].includes(type)) {
       return NextResponse.json(
         { success: false, error: 'Invalid transaction type' },
         { status: 400 }
       );
     }
 
-    // Get user balance
-    const { data: user, error: userError } = await supabase
-      .from('users')
-      .select('checking_balance')
-      .eq('id', userId)
-      .single();
-
-    if (userError || !user) {
-      return NextResponse.json(
-        { success: false, error: 'User not found' },
-        { status: 404 }
-      );
-    }
-
-    let newBalance = Number(user.checking_balance);
     const txAmount = parseFloat(amount);
-
-    if (type === 'deposit') {
-      newBalance += txAmount;
-    } else if (type === 'withdrawal' || type === 'payment') {
-      if (newBalance < txAmount) {
-        return NextResponse.json(
-          { success: false, error: 'Insufficient funds' },
-          { status: 400 }
-        );
-      }
-      newBalance -= txAmount;
-    }
 
     // Insert transaction
     const newTxId = generateId();
@@ -128,17 +101,6 @@ export async function POST(request: NextRequest) {
     if (txError) {
       console.error('Error creating transaction:', txError);
       throw new Error(txError.message);
-    }
-
-    // Update user balance
-    const { error: updateError } = await supabase
-      .from('users')
-      .update({ checking_balance: newBalance })
-      .eq('id', userId);
-
-    if (updateError) {
-      console.error('Error updating user balance:', updateError);
-      throw new Error(updateError.message);
     }
 
     return NextResponse.json({
