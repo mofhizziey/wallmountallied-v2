@@ -242,8 +242,27 @@ export default function AdminDashboardPage() {
     }
   }
 
-  // Remove the old updateUserInAPI function - we'll use DataStore directly
-
+  const updateUserInAPI = async (userId: string, updateData: Partial<User>) => {
+    try {
+      const response = await fetch(`/api/admin/users/${userId}`, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify(updateData),
+      })
+      const data = await response.json()
+      if (data.success) {
+        return data.user
+      } else {
+        console.error('Failed to update user:', data.error)
+        return null
+      }
+    } catch (error) {
+      console.error('Error updating user:', error)
+      return null
+    }
+  }
   const loadData = async () => {
     try {
       setLoading(true)
@@ -538,9 +557,9 @@ export default function AdminDashboardPage() {
       // Create transaction via API - this will update the real balance
       const transactionData = {
         userId: balanceUpdateData.userId,
-        type: action === "subtract" ? "debit" : "credit",
+        type: action, // backend now interprets 'add', 'subtract', and 'set'
         amount: amount,
-        description: `Admin ${action}: ${balanceUpdateData.reason}`,
+        description: balanceUpdateData.reason || (action === "subtract" ? "Debit" : "Credit"),
         category: "Admin Action",
         status: "completed",
         fromAccount: accountType,

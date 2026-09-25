@@ -71,23 +71,103 @@ export async function POST(request: NextRequest) {
     const transactionData = await request.json();
 
     const newTxId = generateId();
+    
+    // First, fetch the user to get their current balances
+    const { data: user, error: userError } = await supabase
+      .from('users')
+      .select('checking_balance, savings_balance, available_checking_balance, available_savings_balance')
+      .eq('id', transactionData.userId)
+      .single();
+      
+    if (userError || !user) {
+      return NextResponse.json(
+        { success: false, error: 'User not found' },
+        { status: 404 }
+      );
+    }
+
+    // Determine which account to update
+    const account = transactionData.fromAccount || 'checking';
+    let txType = transactionData.type; // 'credit', 'debit', 'deposit', 'withdrawal', 'add', 'subtract', 'set'
+    let txAmount = parseFloat(transactionData.amount);
+    
+    let newCheckingBalance = Number(user.checking_balance || 0);
+    let newSavingsBalance = Number(user.savings_balance || 0);
+    let newAvailableChecking = Number(user.available_checking_balance || 0);
+    let newAvailableSavings = Number(user.available_savings_balance || 0);
+
+    const currentBalance = account === 'checking' ? newCheckingBalance : newSavingsBalance;
+
+    // Handle 'add', 'subtract', 'set' from Admin UI
+    if (txType === 'add') {
+      txType = 'credit';
+    } else if (txType === 'subtract') {
+      txType = 'debit';
+    } else if (txType === 'set') {
+      const diff = txAmount - currentBalance;
+      if (diff >= 0) {
+        txType = 'credit';
+        txAmount = diff;
+      } else {
+        txType = 'debit';
+        txAmount = -diff;
+      }
+    }
+
+    if (txType === 'credit' || txType === 'deposit') {
+      if (account === 'checking') {
+        newCheckingBalance += txAmount;
+        newAvailableChecking += txAmount;
+      } else {
+        newSavingsBalance += txAmount;
+        newAvailableSavings += txAmount;
+      }
+    } else if (txType === 'debit' || txType === 'withdrawal' || txType === 'payment') {
+      if (account === 'checking') {
+        newCheckingBalance -= txAmount;
+        newAvailableChecking -= txAmount;
+      } else {
+        newSavingsBalance -= txAmount;
+        newAvailableSavings -= txAmount;
+      }
+    }
+
+    // Insert the transaction
     const { data: newTx, error } = await supabase
       .from('transactions')
       .insert({
         id: newTxId,
         user_id: transactionData.userId,
-        type: transactionData.type,
-        amount: parseFloat(transactionData.amount),
+        type: txType,
+        amount: txAmount,
         description: transactionData.description || '',
         category: transactionData.category || 'general',
         status: transactionData.status || 'completed',
         date: new Date().toISOString(),
-        from_account: transactionData.fromAccount,
+        from_account: account,
         to_account: transactionData.toAccount,
         created_by: 'admin'
       })
       .select()
       .single();
+
+    if (error) throw new Error(error.message);
+
+    // Update the user's balances
+    const { error: updateError } = await supabase
+      .from('users')
+      .update({
+        checking_balance: newCheckingBalance,
+        savings_balance: newSavingsBalance,
+        available_checking_balance: newAvailableChecking,
+        available_savings_balance: newAvailableSavings
+      })
+      .eq('id', transactionData.userId);
+
+    if (updateError) {
+      console.error('Failed to update user balances:', updateError);
+      // We still return success since transaction was created, but log error
+    }
 
     if (error) throw new Error(error.message);
 
